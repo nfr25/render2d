@@ -2,6 +2,13 @@
 
 A small map renderer in the spirit of the GDAL tools, and its web test bench.
 
+![The Brussels-Capital Region drawn by render2d](render2d/docs/img/brussels-region.png)
+
+*The whole Brussels-Capital Region drawn by render2d: parcels, and buildings
+coloured by footprint area. Brussels, UrbIS data.*
+
+Website and design notes: <https://nfr25.github.io/render2d/>
+
 ```
 render2d/    the C++ renderer: vector and raster layers in (GDAL), a map out
              (PNG, SVG, PDF, drawn with Cairo); YSLD styles, CQL filters, labels,

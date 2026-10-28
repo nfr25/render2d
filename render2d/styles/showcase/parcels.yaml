@@ -1,0 +1,15 @@
+# Showcase: cadastral parcels. A warm paper ground everywhere; the parcel
+# boundaries appear when zoomed in, below 1:6 000.
+name: showcase-parcels
+feature-styles:
+- rules:
+  - name: ground
+    symbolizers:
+    - polygon:
+        fill-color: '#EFE8DA'
+  - name: boundaries
+    scale: [min, 6000]
+    symbolizers:
+    - line:
+        stroke-color: '#CDBFA8'
+        stroke-width: 0.6

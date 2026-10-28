@@ -9,6 +9,22 @@ The design notes, with the maths worked out step by step, are in
 [`docs/notions.en.html`](docs/notions.en.html). They are the reference:
 the code follows them.
 
+
+![Streets of Evere at 1:893, house numbers along the facades](docs/img/brussels-street.png)
+
+*Parcels, buildings by area and house numbers, with the three styles of
+[`styles/showcase`](styles/showcase). Brussels, UrbIS data.*
+
+```
+render2d data/UrbISBuildings_04000_CadastralParcels.shp --style styles/showcase/parcels.yaml \
+         data/UrbISBuildings_04000_Buildings.shp      --style styles/showcase/buildings.yaml \
+         data/UrbISBuildings_04000_Addresses.shp      --style styles/showcase/addresses.yaml \
+         --bbox 152032 174072 152382 174297 --size 1400x900 -o brussels-street.png
+```
+
+The design notes can also be read online:
+<https://nfr25.github.io/render2d/render2d/docs/notions.en.html>
+
 ## Status
 
 | Step | Content | |

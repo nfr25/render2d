@@ -1,0 +1,27 @@
+# Showcase: house numbers. One label per door (flats sit on their door, with
+# a PARENTID), turned along the facade: CARTOANGLE counts anticlockwise from
+# east, SLD rotates clockwise, hence 360 - angle. A dot until the number fits
+# (1:1 100: two doors are 6.1 m apart on average), nothing on the overview.
+name: showcase-addresses
+feature-styles:
+- rules:
+  - name: doors
+    filter: ${PARENTID IS NULL}
+    scale: [1100, 6000]
+    symbolizers:
+    - point:
+        size: 4
+        symbols:
+        - mark: {shape: circle, fill-color: '#2B6C8F', stroke-color: '#FFFFFF', stroke-width: 0.8}
+  - name: numbers
+    filter: ${PARENTID IS NULL}
+    scale: [min, 1100]
+    symbolizers:
+    - text:
+        label: ${POLICENUM}
+        font-family: Arial
+        font-size: 10
+        fill-color: '#1F3A4D'
+        halo: {radius: 1.8, fill-color: '#FFFFFF'}
+        anchor: [0.5, 0.5]
+        rotation: ${360 - CARTOANGLE}

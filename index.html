@@ -43,6 +43,11 @@ a.card:hover{border-color:var(--accent2)}
 .st{display:inline-block;width:max-content;font:600 .68rem/1 system-ui,sans-serif;border-radius:4px;padding:3px 6px;color:#fff}
 .st.solid{background:var(--ok)} .st.wip{background:var(--accent)} .st.priv{background:var(--muted)}
 .muted{color:var(--muted)}
+figure{margin:24px 0}
+figure img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:6px;background:#fff}
+figcaption{font:.85rem system-ui,sans-serif;color:var(--muted);margin-top:6px}
+.pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.pair figure{margin:0}
 footer{margin-top:56px;font:.85rem system-ui,sans-serif;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
 </style>
 </head>
@@ -59,6 +64,11 @@ footer{margin-top:56px;font:.85rem system-ui,sans-serif;color:var(--muted);borde
   </div>
 </header>
 
+<figure>
+  <a href="render2d/docs/img/brussels-region.png"><img src="render2d/docs/img/brussels-region.png" alt="The Brussels-Capital Region drawn by render2d: parcels and buildings coloured by footprint area" width="1600" height="1600"></a>
+  <figcaption>The whole Brussels-Capital Region, about 1:40,000: 212,000 parcels and 247,000 buildings, coloured by footprint area. Brussels, UrbIS data.</figcaption>
+</figure>
+
 <section id="features">
   <h2>What it does</h2>
   <ul>
@@ -70,6 +80,26 @@ footer{margin-top:56px;font:.85rem system-ui,sans-serif;color:var(--muted);borde
   </ul>
 <pre>render2d parcels.fgb --style parcels.yaml buildings.gpkg::Buildings --style buildings.yaml \
          --bbox 148000 168000 156000 175000 --size 1200 -o brussels.png</pre>
+</section>
+
+<section id="scales">
+  <h2>One style, every scale</h2>
+  <p>The same three style files at three scales. Each rule says at which scales it applies: parcel boundaries and building outlines join in as one zooms in, then a dot per door, then the house numbers turned along the facades.</p>
+  <div class="pair">
+    <figure>
+      <a href="render2d/docs/img/brussels-district.png"><img src="render2d/docs/img/brussels-district.png" alt="A district of Evere at 1:2,550: outlines and one dot per door" width="1400" height="910"></a>
+      <figcaption>A district of Evere, 1:2,550: outlines and a dot per door.</figcaption>
+    </figure>
+    <figure>
+      <a href="render2d/docs/img/brussels-street.png"><img src="render2d/docs/img/brussels-street.png" alt="Streets of Evere at 1:893 with house numbers along the facades" width="1400" height="900"></a>
+      <figcaption>Streets of Evere, 1:893: house numbers along the facades. Brussels, UrbIS data.</figcaption>
+    </figure>
+  </div>
+<pre>render2d data/UrbISBuildings_04000_CadastralParcels.shp --style styles/showcase/parcels.yaml \
+         data/UrbISBuildings_04000_Buildings.shp      --style styles/showcase/buildings.yaml \
+         data/UrbISBuildings_04000_Addresses.shp      --style styles/showcase/addresses.yaml \
+         --bbox 140700 161000 158500 178700 --size 1600x1600 -o brussels-region.png</pre>
+  <p class="muted">The styles: <a href="https://github.com/nfr25/render2d/tree/main/render2d/styles/showcase">render2d/styles/showcase</a> (YSLD). The other two images use the same command with another <code>--bbox</code>.</p>
 </section>
 
 <section id="notes">

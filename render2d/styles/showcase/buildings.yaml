@@ -1,0 +1,34 @@
+# Showcase: buildings coloured by their footprint area (AREA, m²), six classes
+# from light to dark (ColorBrewer YlOrBr). >= on one side and < on the other:
+# no gap, no building drawn twice. A thin outline joins in below 1:8 000,
+# drawn after the fill of the same building.
+name: showcase-buildings
+feature-styles:
+- rules:
+  - name: '< 30 m²'
+    filter: ${AREA < 30}
+    symbolizers: [{polygon: {fill-color: '#FFF3C4'}}]
+  - name: '30 - 100 m²'
+    filter: ${AREA >= 30 AND AREA < 100}
+    symbolizers: [{polygon: {fill-color: '#FED98E'}}]
+  - name: '100 - 300 m²'
+    filter: ${AREA >= 100 AND AREA < 300}
+    symbolizers: [{polygon: {fill-color: '#FEB24C'}}]
+  - name: '300 - 1000 m²'
+    filter: ${AREA >= 300 AND AREA < 1000}
+    symbolizers: [{polygon: {fill-color: '#F07B26'}}]
+  - name: '1000 - 5000 m²'
+    filter: ${AREA >= 1000 AND AREA < 5000}
+    symbolizers: [{polygon: {fill-color: '#C6500C'}}]
+  - name: '>= 5000 m²'
+    filter: ${AREA >= 5000}
+    symbolizers: [{polygon: {fill-color: '#8C2D04'}}]
+  - name: no area
+    else: true
+    symbolizers: [{polygon: {fill-color: '#BDBDBD'}}]
+  - name: outline
+    scale: [min, 8000]
+    symbolizers:
+    - line:
+        stroke-color: '#6E4A35'
+        stroke-width: 0.5
