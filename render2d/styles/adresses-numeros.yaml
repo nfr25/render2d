@@ -1,0 +1,27 @@
+# House numbers, along the facades. notions §35 to §37.
+# One label per door (the flats sit on their door), from the 1:1 100 on:
+# below, two neighbouring numbers 6.1 m apart would overlap.
+# CARTOANGLE counts anticlockwise from east; SLD rotates clockwise: 360 - angle.
+name: adresses-numeros
+feature-styles:
+- rules:
+  - name: portes                       # a dot, until the number fits
+    filter: ${PARENTID IS NULL}
+    scale: [1100, 10000]
+    symbolizers:
+    - point:
+        size: 5
+        symbols:
+        - mark: {shape: circle, fill-color: '#B5541C', stroke-color: '#FFFFFF', stroke-width: 1}
+  - name: numeros                      # then the number itself, on the door
+    filter: ${PARENTID IS NULL}
+    scale: [min, 1100]
+    symbolizers:
+    - text:
+        label: ${POLICENUM}
+        font-family: Arial
+        font-size: 9
+        fill-color: '#3A2A20'
+        halo: {radius: 1.5, fill-color: '#FFFFFF'}
+        anchor: [0.5, 0.5]
+        rotation: ${360 - CARTOANGLE}

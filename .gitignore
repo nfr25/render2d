@@ -1,0 +1,24 @@
+# Build folders (render2d/.gitignore has the rest of the C++ side)
+build/
+build-release/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Local configuration: the paths of one computer
+viewer2d/viewer.yaml
+render2d/tools/regress-commands.txt
+
+# Local results: tile caches, regression images, logs
+cache/
+viewer2d/cache/
+tiles2d/cache/
+render2d/regress/
+check-logs/
+commandes-nfr.md
+#vscode
+.vscode
+"qix.bat" 

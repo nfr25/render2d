@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tiles2d"
+version = "1.1"
+description = "Tile pyramids built with render2d"
+requires-python = ">=3.10"
+license = {text = "AGPL-3.0-or-later"}
+authors = [{name = "Noël Frankinet"}]
+dependencies = ["pyyaml>=6", "pillow>=10"]
+
+[project.scripts]
+tiles2d = "tiles2d.main:main"
+
+[tool.setuptools]
+packages = ["tiles2d"]

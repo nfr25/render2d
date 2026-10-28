@@ -1,0 +1,76 @@
+# UrbIS Topo points: one rule per TYPE (the surveyor's code). notions §40 to §42.
+# ANGLE: degrees, anticlockwise from east (as CARTOANGLE); a mark at rotation 0
+# points north, SLD turns clockwise: 90 - ANGLE. Trees have no angle.
+name: topo-points
+feature-styles:
+- rules:
+  - name: arbres-icone                 # BG0101P Arbre haute tige, close up: a PNG
+    filter: ${TYPE = 'BG0101P'}
+    scale: [min, 2500]
+    symbolizers:
+    - point:
+        size: 16
+        symbols:
+        - external: {url: icons/arbre.png, format: image/png}
+        - mark: {shape: circle, fill-color: '#2F7D4F'}
+  - name: arbres                       # further: a small green dot
+    filter: ${TYPE = 'BG0101P'}
+    scale: [2500, 15000]
+    symbolizers:
+    - point:
+        size: 4
+        symbols:
+        - mark: {shape: circle, fill-color: '#2F7D4F', stroke-color: '#2F7D4F', stroke-width: 0}
+  - name: eclairage                    # CR3201P Eclairage public
+    filter: ${TYPE = 'CR3201P'}
+    scale: [min, 5000]
+    symbolizers:
+    - point:
+        size: 9
+        symbols:
+        - mark: {shape: star, fill-color: '#F2C230', stroke-color: '#6B5A1E', stroke-width: 0.8}
+  - name: hydrants                     # CR4601P Hydrant
+    filter: ${TYPE = 'CR4601P'}
+    scale: [min, 5000]
+    symbolizers:
+    - point:
+        size: 7
+        symbols:
+        - mark: {shape: square, fill-color: '#D7301F', stroke-color: '#FFFFFF', stroke-width: 1}
+  - name: avaloirs                     # CR6203P, CR6205P Avaloir
+    filter: ${TYPE IN ('CR6203P', 'CR6205P')}
+    scale: [min, 2500]
+    symbolizers:
+    - point:
+        size: 5
+        symbols:
+        - mark: {shape: square, fill-color: '#8C8C8C', stroke-color: '#FFFFFF', stroke-width: 0.5}
+  - name: chambres                     # CR6102P..CR6109P Chambres de visite, taques
+    filter: ${TYPE LIKE 'CR610%'}
+    scale: [min, 2500]
+    symbolizers:
+    - point:
+        size: 6
+        symbols:
+        - mark: {shape: x, fill-color: '#5A5A5A'}
+  - name: arrets-bus                   # CT3302P Poteau arret bus
+    filter: ${TYPE = 'CT3302P'}
+    scale: [min, 5000]
+    symbolizers:
+    - point:
+        size: 14
+        symbols:
+        - external: {url: icons/bus.png, format: image/png}
+        - mark: {shape: square, fill-color: '#2B6C8F'}
+  - name: fleches                      # CR2401P, CR2402P, CR2410P road arrows
+    # An equilateral triangle hardly shows a direction (turned by 45 degrees it
+    # looks like a triangle pointing elsewhere): an arrow image does.
+    filter: ${TYPE IN ('CR2401P', 'CR2402P', 'CR2410P')}
+    scale: [min, 2500]
+    symbolizers:
+    - point:
+        size: 12
+        rotation: ${90 - ANGLE}
+        symbols:
+        - external: {url: icons/fleche.png, format: image/png}   # an arrow pointing north
+        - mark: {shape: triangle, fill-color: '#FFFFFF', stroke-color: '#555555', stroke-width: 1}

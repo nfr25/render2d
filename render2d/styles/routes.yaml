@@ -1,0 +1,10 @@
+# Roads with a casing: two feature-styles = two passes, clean crossings.
+# notions §25.
+name: routes
+feature-styles:
+- rules:
+  - symbolizers:
+    - line: {stroke-color: '#555555', stroke-width: 7, stroke-linecap: round, stroke-linejoin: round}
+- rules:
+  - symbolizers:
+    - line: {stroke-color: '#FFFFFF', stroke-width: 5, stroke-linecap: round, stroke-linejoin: round}

@@ -1,0 +1,13 @@
+# Buildings: the large ones (more than 1 000 m2) in dark brown, the others in
+# light yellow, those without area too (the else rule catches NULL). notions §28, §31.
+name: batiments-grands
+feature-styles:
+- rules:
+  - name: grands
+    filter: ${AREA > 1000}
+    symbolizers:
+    - polygon: {fill-color: '#993404'}
+  - name: autres
+    else: true
+    symbolizers:
+    - polygon: {fill-color: '#FED98E'}

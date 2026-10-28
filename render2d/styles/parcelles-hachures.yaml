@@ -1,0 +1,20 @@
+# Parcels: Evere hatched, the others plain. notions §43.
+# The tiling is anchored to the Lambert 72 origin: hatches continue across tiles.
+name: parcelles-hachures
+feature-styles:
+- rules:
+  - name: evere
+    filter: ${MUNNISCODE = '21006'}
+    symbolizers:
+    - polygon:
+        fill-color: '#F2EBDD'
+        fill-graphic:
+          size: 8
+          symbols:
+          - mark: {shape: 'shape://slash', stroke-color: '#C98B6B', stroke-width: 1}
+        stroke-color: '#9A9286'
+        stroke-width: 0.5
+  - name: autres
+    else: true
+    symbolizers:
+    - polygon: {fill-color: '#F2EBDD', stroke-color: '#9A9286', stroke-width: 0.5}

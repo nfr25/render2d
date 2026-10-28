@@ -1,0 +1,14 @@
+# Addresses: one point per door. The box numbers (flats) sit exactly on
+# their door: without the filter, 22 293 circles instead of 6 282 in Evere.
+# notions §31.
+name: adresses
+feature-styles:
+- rules:
+  - name: portes
+    filter: ${PARENTID IS NULL}
+    scale: [min, 10000]
+    symbolizers:
+    - point:
+        size: 5
+        symbols:
+        - mark: {shape: circle, fill-color: '#B5541C', stroke-color: '#FFFFFF', stroke-width: 1}

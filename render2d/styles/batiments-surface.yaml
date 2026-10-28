@@ -1,0 +1,23 @@
+# Buildings by area, five classes, ColorBrewer YlOrBr. notions §31.
+# >= on one side and < on the other: no gap and no building drawn twice.
+name: batiments-surface
+feature-styles:
+- rules:
+  - name: abris
+    filter: ${AREA < 30}
+    symbolizers: [{polygon: {fill-color: '#FFFFD4'}}]
+  - name: maisons
+    filter: ${AREA >= 30 AND AREA < 100}
+    symbolizers: [{polygon: {fill-color: '#FED98E'}}]
+  - name: immeubles
+    filter: ${AREA >= 100 AND AREA < 300}
+    symbolizers: [{polygon: {fill-color: '#FE9929'}}]
+  - name: grands
+    filter: ${AREA >= 300 AND AREA < 1000}
+    symbolizers: [{polygon: {fill-color: '#D95F0E'}}]
+  - name: tres-grands
+    filter: ${AREA >= 1000}
+    symbolizers: [{polygon: {fill-color: '#993404'}}]
+  - name: sans-surface
+    else: true
+    symbolizers: [{polygon: {fill-color: '#BBBBBB'}}]

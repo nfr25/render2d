@@ -1,0 +1,19 @@
+# Characterization commands for tools/regress.sh (notions §49).
+# One render2d command per line, without the executable and without -o.
+# {root} = the render2d project folder. Copy this file to regress-commands.txt
+# (not in git) and replace {data} with your UrbIS data folder.
+
+# 1. Two layers, default styles, the whole Region.
+{data}/shp/UrbISBuildings_04000_CadastralParcels.shp {data}/shp/UrbISBuildings_04000_Buildings.shp --bbox 148000 168000 152000 172000 --size 1000
+
+# 2. Styles with scale ranges, filters and labels, zoomed in, on a 150 % screen.
+{data}/shp/UrbISBuildings_04000_CadastralParcels.shp --style {root}/styles/parcelles.yaml {data}/shp/UrbISBuildings_04000_Buildings.shp --style {root}/styles/batiments.yaml {data}/shp/UrbISBuildings_04000_Addresses.shp --style {root}/styles/adresses-numeros.yaml --bbox 149500 170500 149800 170740 --size 1200x960 --pixel-ratio 1.5
+
+# 3. A missing source (warning, the other layer is drawn) and hatching.
+{data}/shp/absent.shp {data}/shp/UrbISBuildings_04000_CadastralParcels.shp --style {root}/styles/parcelles-hachures.yaml --bbox 149500 170500 150000 170900 --size 800
+
+# 4. No --bbox (extent of the layer), transparent background, area filters.
+{data}/shp/UrbISBuildings_04000_Buildings.shp --style {root}/styles/batiments-surface.yaml --background none --size 800
+
+# 5. Triangles turned by an attribute, symbol sizes.
+{data}/shp/UrbISBuildings_04000_Addresses.shp --style {root}/styles/adresses-triangles.yaml --bbox 149500 170500 149800 170740 --size 900

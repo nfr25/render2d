@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>viewer2d — Notes</title>
+<style>
+:root{
+  --bg:#fbfaf7; --fg:#22252b; --muted:#6b7079; --line:#dedad2; --card:#ffffff;
+  --accent:#b5541c; --accent2:#2b6c8f; --ok:#2f7d4f; --code:#f3f0ea; --life:#fff6e8; --lifeb:#e9c98f;
+  --grid:#e6e2da; --ink:#22252b;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#16181c; --fg:#e4e2dd; --muted:#9a9ea6; --line:#2f333a; --card:#1d2025;
+    --accent:#e08a4f; --accent2:#6fb3d6; --ok:#6cc08f; --code:#23262c; --life:#2a241a; --lifeb:#6e5631;
+    --grid:#2a2e35; --ink:#e4e2dd;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#16181c; --fg:#e4e2dd; --muted:#9a9ea6; --line:#2f333a; --card:#1d2025;
+  --accent:#e08a4f; --accent2:#6fb3d6; --ok:#6cc08f; --code:#23262c; --life:#2a241a; --lifeb:#6e5631;
+  --grid:#2a2e35; --ink:#e4e2dd;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 Georgia,"Times New Roman",serif}
+.wrap{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+header h1{font-size:2rem;margin:.2em 0 .1em}
+header p{color:var(--muted);margin:0}
+nav.toc{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:12px 18px;margin:24px 0}
+nav.toc strong{display:block;margin-bottom:4px}
+nav.toc a{display:block;color:var(--accent2);text-decoration:none;padding:1px 0}
+nav.toc a:hover{text-decoration:underline}
+section{margin-top:48px}
+h2{font-size:1.45rem;border-bottom:2px solid var(--line);padding-bottom:4px}
+h3{font-size:1.1rem;margin-top:28px}
+.tag{font:600 .7rem/1 system-ui,sans-serif;background:var(--accent);color:#fff;border-radius:4px;padding:3px 6px;vertical-align:middle;margin-left:6px}
+code,pre,.mono{font-family:"JetBrains Mono",Consolas,Menlo,monospace;font-size:.88em}
+code{background:var(--code);padding:1px 4px;border-radius:3px;overflow-wrap:anywhere}
+pre{background:var(--code);padding:12px 14px;border-radius:6px;overflow-x:auto;line-height:1.45}
+.poterne{background:var(--life);border-left:4px solid var(--lifeb);border-radius:4px;padding:10px 16px;margin:18px 0}
+.poterne > strong:first-child{font:600 .8rem system-ui,sans-serif;text-transform:uppercase;letter-spacing:.04em;color:var(--accent)}
+.poterne p{margin:.4em 0}
+.calc{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:10px 16px;margin:14px 0}
+.calc ol{margin:.3em 0;padding-left:1.4em}
+.muted{color:var(--muted)}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:.92em}
+th,td{border:1px solid var(--line);padding:5px 8px;text-align:left;vertical-align:top}
+th{background:var(--code)}
+.scroll{overflow-x:auto}
+.mat{display:inline-flex;align-items:center;gap:8px;margin:8px 0;font-family:Consolas,Menlo,monospace;font-size:.9em}
+.mat table{width:auto;margin:0;border-left:2px solid var(--fg);border-right:2px solid var(--fg);border-radius:3px}
+.mat td{border:none;padding:2px 10px;text-align:right}
+.demo{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px;margin:18px 0}
+.demo h4{margin:0 0 8px;font:600 .95rem system-ui,sans-serif}
+.demo canvas{display:block;width:100%;max-width:520px;margin:8px auto;border:1px solid var(--line);border-radius:4px;touch-action:none}
+.ctl{display:flex;flex-wrap:wrap;gap:8px 16px;font:.85rem system-ui,sans-serif;align-items:center}
+.ctl label{display:flex;gap:6px;align-items:center}
+.ctl input[type=number]{width:96px;padding:2px 4px;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px}
+.ctl input[type=text]{width:150px;padding:2px 4px;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px}
+.ctl button{font:inherit;padding:3px 10px;border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:4px;cursor:pointer}
+.out{font:.85rem/1.55 Consolas,Menlo,monospace;background:var(--code);border-radius:6px;padding:8px 12px;margin-top:8px;white-space:pre-wrap;overflow-x:auto}
+.refs li{margin:6px 0}
+.road li{margin:4px 0}
+.road .now{font-weight:bold;color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>viewer2d — Notes</h1>
+  <p>A test bench for <code>render2d</code>: a map you can pan and zoom freely, instead of typing <code>--bbox</code> values by hand. A separate project: all it knows of the renderer is its command line.</p>
+</header>
+
+<nav class="toc">
+  <strong>Contents</strong>
+  <a href="#but">1. Purpose and architecture</a>
+  <a href="#routes">2. Pages and routes in NiceGUI</a>
+  <a href="#async">3. Asynchronous Python</a>
+  <a href="#lambert">4. Leaflet in Lambert metres</a>
+  <a href="#zoom">5. Leaflet's zoom and our resolution</a>
+  <a href="#vue">6. One image per view</a>
+  <a href="#rapport">7. render2d's report in the page</a>
+  <a href="#config">8. Configuration, and why the browser only sends numbers</a>
+  <a href="#code">9. How it translates into code</a>
+  <a href="#tuiles">10. Tiles, pyramids and tiles2d</a>
+  <a href="#config2">11. render2d reads viewer.yaml itself</a>
+  <a href="#refs">12. References</a>
+  <a href="#road">13. Roadmap</a>
+</nav>
+
+<!-- ============================================================== -->
+<section id="but">
+  <h2>1. Purpose and architecture</h2>
+  <p>Testing a style means zooming, panning, watching the rule change at 1:15,000. With the command line, every view needs a <code>--bbox</code> computed by hand. The viewer does that computation every time the map moves.</p>
+  <pre>browser                       NiceGUI server (Python)         render2d (C++)
+┌────────────────────┐  GET   ┌──────────────────────┐ runs  ┌──────────────┐
+│ Leaflet, Lambert   │ ─────► │ /render.png?xmin=…   │ ────► │ --bbox …     │
+│ end of a move      │        │ FastAPI route        │       │ --size …     │
+│ → extent + size    │ ◄───── │ returns the image    │ ◄──── │ -o view.png  │
+└────────────────────┘  PNG   └──────────────────────┘ image └──────┬───────┘
+                                                                    │ reads
+                                                          .shp, .gpkg, .yaml styles</pre>
+  <ul>
+    <li><strong>The browser</strong> shows the map and tells the server which area it displays, on how many pixels.</li>
+    <li><strong>The server</strong> turns that request into a <code>render2d</code> command line and returns the image.</li>
+    <li><strong>render2d</strong> does what it already does: read, style, draw.</li>
+  </ul>
+  <p>This is the principle of a WMS server (the OGC's <em>Web Map Service</em>): a "GetMap" request with an extent and a size, an image in return. With no cache and one process per image, it is not built for performance, but for a test bench it is more than enough: under a second for the whole Brussels Region, much less for a neighbourhood.</p>
+</section>
+
+<!-- ============================================================== -->
+<section id="routes">
+  <h2>2. Pages and routes in NiceGUI</h2>
+  <p>NiceGUI is built on FastAPI. It offers two ways to answer an address:</p>
+  <div class="scroll">
+  <table>
+    <tr><th></th><th>A page</th><th>A raw HTTP route</th></tr>
+    <tr><td>Decorator</td><td><code>@ui.page('/')</code></td><td><code>@app.get('/render.png')</code></td></tr>
+    <tr><td>Answers with</td><td>an interface: buttons, text, the map area</td><td>data: here a PNG image</td></tr>
+    <tr><td>Built</td><td>once per connected browser</td><td>on every request</td></tr>
+    <tr><td>Here</td><td>the viewer page</td><td>the rendering</td></tr>
+  </table>
+  </div>
+  <pre>@app.get('/render.png')
+async def render(xmin: float, ymin: float, xmax: float, ymax: float, w: int, h: int):
+    ...                                    # runs render2d, returns the image
+
+@ui.page('/')
+def index():
+    ...                                    # builds the page
+
+ui.run()</pre>
+  <p>Three FastAPI mechanisms do the work for us:</p>
+  <ul>
+    <li><strong>The function's parameters become the address's parameters.</strong> The request <code>/render.png?xmin=150000&amp;ymin=160000&amp;xmax=155000&amp;ymax=165000&amp;w=1000&amp;h=1000</code> arrives with <code>xmin = 150000.0</code> already converted to a number. If a parameter is missing, or if <code>w=abc</code>, FastAPI answers on its own with a 422 error saying which one is wrong.</li>
+    <li><strong><code>async</code> and <code>asyncio.create_subprocess_exec</code></strong>: while <code>render2d</code> works, the server does not sit blocked; it can answer other requests.</li>
+    <li><strong>A semaphore</strong> (<code>asyncio.Semaphore</code>) limits how many <code>render2d</code> processes run at once. Dragging the map quickly can produce several requests in a row: on an 8-core machine, there is no point starting 20.</li>
+  </ul>
+</section>
+
+<!-- ============================================================== -->
+<section id="async">
+  <h2>3. Asynchronous Python</h2>
+  <p>The <code>/render.png</code> route is declared <code>async def</code> and contains <code>await</code>s. That is what lets a single Python process serve the page, the JavaScript and several images at once, without ever being stuck while a <code>render2d</code> works.</p>
+  <p>In Python, that waiter is called the <strong>event loop</strong>. There is only one; it switches from task to task, but only at the places meant for it.</p>
+  <h3>The two keywords</h3>
+  <ul>
+    <li><strong><code>async def</code></strong> declares a function that <em>may</em> pause.</li>
+    <li><strong><code>await</code></strong> marks a pause: "I need to wait for something; deal with the others, and come back for me when it is ready".</li>
+  </ul>
+  <p>Our route contains two:</p>
+  <pre>async with slots:                                                # pause 1: wait for a free slot
+    code, report = await asyncio.to_thread(run_render2d, cmd)    # pause 2: wait for render2d to finish</pre>
+  <h3>A timeline, with numbers</h3>
+  <ol>
+    <li>At 0 ms, the request for image A arrives. <code>render</code> takes a slot, starts <code>render2d</code> in a separate thread, reaches the <code>await</code> and pauses.</li>
+    <li>At 10 ms, the browser asks for a file (the page, <code>viewer.js</code>). The loop is free: it answers in 2 ms.</li>
+    <li>At 200 ms, <code>render2d</code> has finished. The loop resumes <code>render</code> just after its <code>await</code>, reads the PNG and sends it.</li>
+  </ol>
+  <h3>The trap: a blocking call</h3>
+  <p>The loop switches tasks <strong>only at <code>await</code>s</strong>. A call that blocks without <code>await</code> (<code>subprocess.run</code>, <code>time.sleep</code>, a big computation loop) therefore blocks <strong>the whole server</strong>. Had we written:</p>
+  <pre>code, report = run_render2d(cmd)        # no await: the whole server freezes during the rendering</pre>
+  <p>the file request of step 2 would have waited 200 ms, and the second image would have waited for the first one to finish. That is why <code>run_render2d</code> goes through <code>asyncio.to_thread</code>: the blocking work goes to a separate thread, and the loop waits for its end <em>without</em> blocking.</p>
+  <h3>Concurrency is not parallelism</h3>
+  <p>The loop does one thing at a time: that is <strong>concurrency</strong>, many things <em>in progress</em> at the same time because, most of the time, we are waiting (for a disk, the network, another program). The real <strong>parallel</strong> computation, here, is the <code>render2d</code> processes, each on its own core. And the semaphore decides how many there are at once.</p>
+  <p>In C++, the equivalent of the semaphore is <code>std::counting_semaphore</code> (C++20), and <code>async with</code> plays the role of a <code>lock_guard</code>: the slot is given back automatically when the block is left, even on an error, like RAII.</p>
+  <div class="demo" id="demo-async">
+    <h4>Demo — four images and one file requested almost at the same time</h4>
+    <div class="ctl">
+      <label>Semaphore slots <input type="range" id="as-slots" min="1" max="4" step="1" value="2"> <span id="as-slots-v">2</span></label>
+      <label><input type="checkbox" id="as-block"> blocking call (no <code>await</code>)</label>
+    </div>
+    <canvas id="cv-async" width="520" height="220"></canvas>
+    <div class="out" id="out-async"></div>
+  </div>
+  <p class="muted">Assumptions of the demo: each rendering takes 200 ms when it has a core to itself (the machine has 4), a static file 2 ms. Beyond 4 simultaneous renderings, they would share the cores and all slow down.</p>
+</section>
+
+<!-- ============================================================== -->
+<section id="lambert">
+  <h2>4. Leaflet in Lambert metres</h2>
+  <p>By default, Leaflet works in Web Mercator, with latitudes and longitudes. Our data are in Belgian Lambert 72, and <code>render2d</code> does not reproject yet. Fortunately, Leaflet has a "simple" coordinate system, <code>L.CRS.Simple</code>, meant for plans that are not maps of the globe (a video game map, a scanned drawing). We put our Lambert metres into it directly:</p>
+  <ul>
+    <li>one map unit is <strong>one pixel at zoom 0</strong>, and north is up;</li>
+    <li>in Lambert, one unit = one metre: at zoom 0, <strong>1 metre = 1 pixel</strong>.</li>
+  </ul>
+  <h3>The coordinate-order trap</h3>
+  <p>Leaflet always writes a point <code>[lat, lng]</code>, that is <code>[y, x]</code>, the opposite of what GIS people are used to. The Lambert point (X = 150,000, Y = 165,000) is written <code>[165000, 150000]</code> for Leaflet. We wrap it once and for all in a small function, as Leaflet's documentation advises:</p>
+  <pre>const xy = (x, y) =&gt; L.latLng(y, x);       // we think in (X, Y), Leaflet receives [Y, X]</pre>
+  <h3>Why not NiceGUI's <code>ui.leaflet</code>?</h3>
+  <p>NiceGUI provides a map component, <code>ui.leaflet</code>, very handy in Web Mercator. But its options go through JSON, and a coordinate system like <code>L.CRS.Simple</code> is a JavaScript object, which JSON cannot carry; its documentation does not mention it. For this Lambert test bench, we therefore write a few dozen lines of JavaScript with Leaflet directly, in the NiceGUI page. Once reprojection exists, we can move to <code>ui.leaflet</code> with an OpenStreetMap background.</p>
+</section>
+
+<!-- ============================================================== -->
+<section id="zoom">
+  <h2>5. Leaflet's zoom and our resolution</h2>
+  <p>Each zoom step doubles the display size. At zoom z, one metre is 2<sup>z</sup> pixels; the resolution, in metres per pixel, is therefore 2<sup>−z</sup>.</p>
+  <div class="calc"><strong>A few values</strong>
+    <ol>
+      <li>Zoom 0: 2<sup>0</sup> = 1 pixel per metre, i.e. 1 m/px, scale 1 ÷ 0.00028 ≈ 1:3,571.</li>
+      <li>Zoom −2: 2<sup>−2</sup> = 0.25 pixel per metre, i.e. 4 m/px, scale ≈ 1:14,286. Just below the limit of the buildings style (1:15,000).</li>
+      <li>Zoom −4: 2<sup>−4</sup> = 1/16 pixel per metre, i.e. 16 m/px, scale ≈ 1:57,143: the whole Region.</li>
+      <li>Conversely, for the Region at 16.529 m/px: z = −log<sub>2</sub>(16.529) ≈ −4.05.</li>
+    </ol>
+  </div>
+  <p>So we need <strong>negative zooms</strong> (<code>minZoom: -6</code>) to see the whole Region, and we allow fractional zooms (<code>zoomSnap: 0</code>) so that the wheel does not jump by powers of 2. The maximum zoom, 3, gives 8 pixels per metre: a 6 m house is 48 pixels.</p>
+  <div class="demo" id="demo-zoom">
+    <h4>Demo — Leaflet zoom, resolution and style rule</h4>
+    <div class="ctl">
+      <label>Zoom <input type="range" id="z-in" min="-6" max="3" step="0.05" value="-2"></label>
+    </div>
+    <div class="out" id="out-zoom"></div>
+  </div>
+</section>
+
+<!-- ============================================================== -->
+<section id="vue">
+  <h2>6. One image per view</h2>
+  <p>After each pan or zoom (Leaflet's <code>moveend</code> event), the page:</p>
+  <ol>
+    <li>reads the visible extent (<code>map.getBounds()</code>) and the map's size in pixels (<code>map.getSize()</code>);</li>
+    <li>builds the address <code>/render.png?xmin=…&amp;ymin=…&amp;xmax=…&amp;ymax=…&amp;w=…&amp;h=…</code>;</li>
+    <li>lays the image received on the map (<code>L.imageOverlay</code>), exactly on the requested extent.</li>
+  </ol>
+  <p>The extent and the size come from the same window: they have the same shape, and <code>render2d</code> has nothing to widen.</p>
+  <h3>Three details that make the difference</h3>
+  <ul>
+    <li><strong>No flicker.</strong> The old image stays displayed while the new one arrives, and is swapped only once the new one has loaded. During a zoom, Leaflet enlarges the old one: it is blurred for a moment, but there is always something on screen.</li>
+    <li><strong>Stale answers.</strong> Moving the map three times in a row sends three requests. They can come back out of order: the first, slower, after the third. So each request is numbered, and any answer that is not the latest is ignored.</li>
+    <li><strong>High-density screens.</strong> On a screen whose <code>devicePixelRatio</code> is 2, we request 2 × more pixels in each direction for a sharp image, and display it on the same extent. But everything the style gives in pixels (line widths, points, house numbers) would then look half as big, and the scale would be computed on the image's pixels, not on the ones seen. So the page also sends the ratio, and <code>render2d</code> receives <code>--pixel-ratio</code>: it multiplies every length of the style by that ratio and computes the scale on the pixels seen (chapter 39 of render2d's notes). On a 4K screen set to 150 %, a 9-pixel house number is drawn on 13.5 pixels of the image, and seen at 9.</li>
+  </ul>
+</section>
+
+<!-- ============================================================== -->
+<section id="rapport">
+  <h2>7. render2d's report in the page</h2>
+  <p><code>render2d</code> writes a valuable report on its output: the scale, the number of features, the reading and drawing times, the warnings. The viewer must show it under the map, otherwise most of the test bench's value is lost.</p>
+  <p>The route returns an image, not text. So the report travels in an <strong>HTTP header</strong> of the response (<code>X-Render2d-Report</code>), next to the image. The page requests the image with <code>fetch</code>, reads the header, shows the text, then builds the image from the bytes received. One request for both.</p>
+  <p>The report ends with <strong>the exact command line</strong> that produced the image. You can copy it and replay it in a terminal, for instance to produce the same view as a PDF: the "replayable command line" principle of the tool.</p>
+  <p>True to the project's principle, a <code>render2d</code> error does not stop the viewer: the route returns the error text (HTTP code 502), the page shows it instead of the report, and keeps the previous image.</p>
+</section>
+
+<!-- ============================================================== -->
+<section id="config">
+  <h2>8. Configuration, and why the browser only sends numbers</h2>
+  <p>The viewer reads a small <code>viewer.yaml</code> file at start-up:</p>
+  <pre>render2d: /path/to/render2d/build-release/render2d
+layers:
+  - source: data/UrbISBuildings_04000_CadastralParcels.shp
+    style:  ../render2d/styles/parcelles.yaml
+  - source: data/UrbISBuildings_04000_Buildings.shp
+    style:  ../render2d/styles/batiments.yaml
+start:                      # start view, in Lambert 72
+  bbox: [148000, 168000, 152000, 172000]</pre>
+  <p>The browser never sends a file name or a piece of command: <strong>only six numbers</strong>, which FastAPI has already checked. The files and the path of <code>render2d</code> come from the configuration, on the server side. Even for a local tool, it is the right habit: an address that could be tampered with to run any command would be a security hole, and here there is nothing to tamper with.</p>
+  <p>To change a style, edit the YSLD file and move the map by a pixel: every view starts <code>render2d</code> again, which reads the style again. No need to restart the server. That is what makes the test bench pleasant for tuning a style.</p>
+</section>
+
+<!-- ============================================================== -->
+<section id="code">
+  <h2>9. How it translates into code</h2>
+  <pre>viewer2d/
+  viewer.yaml              the configuration (chapter 8)
+  viewer2d/                (the Python package)
+    config.py              reading and checking viewer.yaml
+    render.py              the /render.png route: command line, semaphore, report
+    page.py                the NiceGUI page: the map area, the report
+    main.py                puts it together and starts (ui.run); python -m viewer2d
+  static/
+    viewer.js              Leaflet in CRS.Simple: moveend, numbered requests, image swap
+  tests/test_viewer2d.py   configuration and command line, no browser
+  docs/notions.html        these notes (French); notions.en.html in English
+  README.md
+  requirements.txt         nicegui, pyyaml</pre>
+  <ul>
+    <li><strong>Python</strong>: the server logic, short and readable. <strong>JavaScript</strong>: only what must live in the browser (the map).</li>
+    <li><strong>Leaflet</strong> is loaded from a CDN, nothing to install.</li>
+    <li><strong>No dependency on render2d's code</strong>: only the path of its executable.</li>
+    <li><strong><code>render2d</code> runs in a separate thread</strong> (<code>asyncio.to_thread</code> with <code>subprocess.run</code>) rather than with <code>asyncio.create_subprocess_exec</code>: the latter depends on the event loop type, and on Windows it does not work with all of them. The chosen version works everywhere, and the server stays just as available.</li>
+    <li><strong>The coordinate under the mouse</strong> is shown at the top right, in Lambert metres: handy for noting an extent and passing it to <code>--bbox</code>.</li>
+  </ul>
+</section>
+
+<!-- ============================================================== -->
+<section id="tuiles">
+  <h2>10. Tiles, pyramids and tiles2d</h2>
+  <p>In view mode, every move redraws the whole view. The classic remedy is to shift the image and repaint only the strip that was uncovered: after a 200-pixel drag on a 1000 × 800 view, a 200 × 800 strip = 160,000 pixels out of 800,000, i.e. 20 %. <strong>Tiles</strong> generalise this idea cleanly, and add what strips cannot do: <strong>keep</strong> what has already been drawn.</p>
+
+  <h3>The grid and the pyramid</h3>
+  <p>The ground is cut into fixed squares of 256 × 256 pixels. Each zoom level has its grid, and each tile splits into 4 at the next level: it is a <strong>pyramid</strong>. In Lambert, with <code>L.CRS.Simple</code> (1 m = 1 pixel at zoom 0, <a href="#zoom">chapter 5</a>), a tile at zoom z covers 256 × 2<sup>−z</sup> metres on a side.</p>
+  <div class="calc"><strong>The size of a tile, level by level</strong>
+    <ol>
+      <li>Zoom 0: 256 × 2<sup>0</sup> = <strong>256 m</strong> (1 m/px).</li>
+      <li>Zoom −2: 256 × 2<sup>2</sup> = 256 × 4 = <strong>1,024 m</strong> (4 m/px, just below the buildings style's 1:15,000 limit).</li>
+      <li>Zoom −4: 256 × 2<sup>4</sup> = 256 × 16 = <strong>4,096 m</strong> (16 m/px, the whole Region).</li>
+    </ol>
+  </div>
+
+  <h3>A tile's address: z/x/y</h3>
+  <p>In <code>L.CRS.Simple</code>, Leaflet computes a point's pixel as (X × 2<sup>z</sup>; −Y × 2<sup>z</sup>): the minus sign flips the Y axis, like the renderer's matrix. The tile containing the point is then:</p>
+  <pre>x = floor( X × 2^z ÷ 256)
+y = floor(−Y × 2^z ÷ 256)</pre>
+  <div class="calc"><strong>The Lambert point (149,000; 170,000), at zoom 0</strong>
+    <ol>
+      <li>x = floor(149,000 ÷ 256) = floor(582.03) = <strong>582</strong>.</li>
+      <li>y = floor(−170,000 ÷ 256) = floor(−664.06) = <strong>−665</strong>. The row number is negative: that is normal, Lambert Y is positive and the pixel axis is flipped. Careful: floor(−664.06) is −665, not −664: floor rounds down, so towards the more negative.</li>
+      <li>Extent in X: from 582 × 256 = <strong>148,992</strong> to 148,992 + 256 = <strong>149,248</strong>.</li>
+      <li>Extent in Y: the pixel rows go from −665 × 256 = −170,240 to −169,984, so Y goes from <strong>169,984</strong> to <strong>170,240</strong>. The point (Y = 170,000) is indeed inside.</li>
+    </ol>
+    <p>The tile is called <code>0/582/-665</code>, and its command is <code>render2d … --bbox 148992 169984 149248 170240 --size 256x256 --background none</code>.</p>
+  </div>
+  <p>The key point: this address does not depend on where the user is looking. Two overlapping views ask for the <em>same</em> tiles: they can therefore be kept.</p>
+  <div class="demo" id="demo-tile">
+    <h4>Demo — from a Lambert point to its tile</h4>
+    <div class="ctl">
+      <label>X <input type="number" id="tl-x" value="149000" step="100"></label>
+      <label>Y <input type="number" id="tl-y" value="170000" step="100"></label>
+      <label>Zoom <input type="range" id="tl-z" min="-6" max="3" step="1" value="0"> <span id="tl-zv">0</span></label>
+    </div>
+    <div class="out" id="out-tile"></div>
+  </div>
+
+  <h3>How many tiles for the Brussels Region?</h3>
+  <p>The Region is about 16.5 km across. Since the grid does not fall exactly on its edges, we count one extra tile per side.</p>
+  <div class="scroll">
+  <table>
+    <tr><th>Zoom</th><th>Tile side</th><th>Tiles per side</th><th>Tiles</th></tr>
+    <tr><td>−4</td><td>4,096 m</td><td>16,500 ÷ 4,096 ≈ 4.0 → 5</td><td>25</td></tr>
+    <tr><td>−3</td><td>2,048 m</td><td>≈ 8.1 → 9</td><td>81</td></tr>
+    <tr><td>−2</td><td>1,024 m</td><td>≈ 16.1 → 17</td><td>289</td></tr>
+    <tr><td>−1</td><td>512 m</td><td>≈ 32.2 → 33</td><td>1,089</td></tr>
+    <tr><td>0</td><td>256 m</td><td>≈ 64.5 → 65</td><td>4,225</td></tr>
+    <tr><td colspan="3"><strong>Total from −4 to 0</strong></td><td><strong>5,709</strong></td></tr>
+  </table>
+  </div>
+  <p>Each level multiplies the number by about 4: zoom 1 (128 m per tile) alone would add 130 × 130 ≈ 16,900. Orders of magnitude, to be measured: at about 50 ms per tile including process start-up, the 5,709 tiles take 5,709 × 0.05 ≈ 285 s on one core, a little over a minute on four. And at about twenty kilobytes per tile, roughly 5,709 × 20 kB ≈ 115 MB of cache.</p>
+
+  <h3>The cache, and when it goes stale</h3>
+  <p>Tiles are stored on disk as <code>cache/&lt;key&gt;/z/x/y.png</code>. The <strong>key</strong> is a fingerprint (a hash) of everything that changes the drawing: the content of the style files, the date and size of the data files, the version of <code>render2d</code>. Edit <code>batiments.yaml</code>: the key changes, writing goes to a new folder, and the old tiles can never be served by mistake. Unused folders just need deleting from time to time.</p>
+  <p>Alternative: <strong>MBTiles</strong>, the de facto standard for distributing a pyramid. It is a single SQLite file, with a <code>tiles(zoom_level, tile_column, tile_row, tile_data)</code> table and a <code>metadata</code> table. A well-known trap: MBTiles numbers rows from bottom to top (the TMS convention), the opposite of <code>z/x/y</code>. y must be flipped when writing and reading.</p>
+
+  <h3>tiles2d: one more command, not a bigger renderer</h3>
+  <p>Tiles do not go into <code>render2d</code>, which stays a command in the GDAL manner: an extent and a size in, an image out. Cutting and caching live in a separate tool, <code>tiles2d</code>, just as <code>gdal2tiles.py</code> is a script built on top of GDAL:</p>
+  <pre>tiles2d --map map.yaml --zoom -4..0 --bbox 143000 160000 160000 177000 --out cache/</pre>
+  <ul>
+    <li>For each tile, it computes the extent (as in the demo) and calls <code>render2d</code>, in parallel on several cores, with the same semaphore as in <a href="#async">chapter 3</a>.</li>
+    <li>It skips tiles already present: it can be interrupted and started again.</li>
+    <li>It reports, in the spirit of the project: tiles computed, empty tiles, errors, time.</li>
+  </ul>
+  <h3>Metatiles</h3>
+  <p>Starting one process per 256-pixel tile costs mostly the start-up. A block of 4 × 4 tiles (a 1,024 × 1,024 pixel image) can be rendered at once, then cut: 16 times fewer processes, and the features straddling two tiles are drawn only once, so they always join. It is the technique of OpenStreetMap's tile servers, and it will also prepare the problem of labels cut at tile borders.</p>
+
+  <h3>A shapefile's spatial index: the <code>.qix</code> file</h3>
+  <p>For each metatile, <code>render2d</code> sets a <strong>spatial filter</strong>: "only the features touching this rectangle". GDAL still has to know <em>where</em> the features are in the file. A shapefile is first of all a list: the <code>.shp</code> (the geometries), the <code>.shx</code> (where each geometry starts in the <code>.shp</code>), the <code>.dbf</code> (the attributes). Nothing in it is sorted by place.</p>
+  <p>The <code>.qix</code> is the <strong>spatial index</strong>, one more file next to the others. It sorts the features in a <em>quadtree</em>: the Region is cut into 4 quarters, each quarter into 4 again, and so on; each cell knows the numbers of the features touching it.</p>
+  <p>With numbers. A metatile at zoom 0 covers 4 × 256 = 1,024 m on a side, and the Region's buildings file holds 247,625 of them (counted by <code>ogrinfo -so</code>):</p>
+  <ul>
+    <li><strong>Without <code>.qix</code></strong>: GDAL reads the 247,625 envelopes one by one and keeps maybe 3,000. That is the case for every metatile, wherever it is: about 1.3 s per metatile (measured below).</li>
+    <li><strong>With <code>.qix</code></strong>: the Region is about 16 km across; cutting into 4 at each level, a cell is 8 km, then 4, 2, 1 km. After 4 levels, GDAL has the few cells touching the metatile and reads only their features: a few thousand instead of 247,625.</li>
+  </ul>
+  <p><strong>Measured</strong> with <code>tiles2d</code> on the whole Region, zooms −4 to 0, 8 parallel jobs, before and after creating the two indexes. The time per metatile is computed as: seconds for the level × 8 jobs ÷ number of metatiles.</p>
+  <div class="scroll">
+  <table>
+    <tr><th>Zoom 0, 420 metatiles</th><th>without .qix</th><th>with .qix</th></tr>
+    <tr><td>Parcels</td><td>69.9 s → 69.9 × 8 ÷ 420 ≈ 1.33 s</td><td>14.9 s → 14.9 × 8 ÷ 420 ≈ 0.28 s</td></tr>
+    <tr><td>Buildings</td><td>69.3 s → 69.3 × 8 ÷ 420 ≈ 1.32 s</td><td>14.0 s → 14.0 × 8 ÷ 420 ≈ 0.27 s</td></tr>
+    <tr><td><strong>Both layers, zooms −4 to 0</strong></td><td><strong>207.0 s</strong></td><td><strong>48.7 s</strong>, i.e. 4.3 times less</td></tr>
+  </table>
+  </div>
+  <p>At small zooms, the index helps much less: at zoom −4, a metatile covers 4 × 4,096 m ≈ 16 km, almost the whole Region. It contains almost every feature, and the index has nothing to discard. What remains, about 0.27 s per metatile, is the real work: starting <code>render2d</code>, reading the useful features, drawing them, then cutting and writing the PNGs.</p>
+  <p>The index is created once, with GDAL's <code>ogrinfo</code>. The name after <code>ON</code> is the layer's, that is the file's name without <code>.shp</code>:</p>
+  <pre>ogrinfo UrbISBuildings_04000_Buildings.shp -sql "CREATE SPATIAL INDEX ON UrbISBuildings_04000_Buildings"</pre>
+  <p>After that, nothing to do: GDAL finds the <code>.qix</code> next to the <code>.shp</code> on its own. Two remarks:</p>
+  <ul>
+    <li>The <code>.qix</code> is part of the <strong>cache key</strong> (with the other files of the shapefile). Creating it changes the key once: the layer starts again in a new folder. The cache cannot know that an index does not change the drawing, and it is better for it to be too cautious than the opposite.</li>
+    <li>If the <code>.shp</code> is replaced by a new version, the index must be rebuilt. The other formats have theirs without anyone thinking about it: a GeoPackage contains an R-tree index, a FlatGeobuf too, and PostGIS uses a GiST index.</li>
+  </ul>
+  <p>That is why <code>tiles2d</code> shows a hint when a shapefile has no <code>.qix</code>.</p>
+
+  <h3>The server gets smart, without getting complicated</h3>
+  <pre>@app.get('/tiles/{key}/{z}/{x}/{y}.png')
+async def tile(key: str, z: int, x: int, y: int):
+    path = cache / key / str(z) / str(x) / f'{y}.png'
+    if not path.exists():                    # not computed yet: compute it and keep it
+        async with slots:
+            await asyncio.to_thread(render_tile, z, x, y, path)
+    return FileResponse(path)</pre>
+  <p>Pre-computation by <code>tiles2d</code> and on-demand computation thus fill the <em>same</em> cache. On the page side, <code>viewer.js</code> replaces the single image with a Leaflet tile layer (<code>L.tileLayer('/tiles/&lt;key&gt;/{z}/{x}/{y}.png')</code>), which also works in <code>L.CRS.Simple</code>: an ideal test bench for seams, before the real Web Mercator tiles that will come with reprojection.</p>
+
+  <h3>What viewer2d's Tiles mode does</h3>
+  <p>The <strong>View / Tiles</strong> switch at the top of the page (a NiceGUI <code>ui.toggle</code>, which calls the map's JavaScript) toggles between the single image and the pyramids. In Tiles mode:</p>
+  <ul>
+    <li><strong>One Leaflet layer per data layer</strong>, at the address <code>/tiles/&lt;layer&gt;/&lt;key&gt;/{z}/{x}/{y}.png</code>. The zoom moves in whole steps.</li>
+    <li><strong>A missing tile</strong> is drawn with its <em>whole</em> metatile, as in <code>tiles2d</code>, and kept. Leaflet asks for the 16 tiles of a metatile at once: a <strong>lock per metatile</strong> (<code>asyncio.Lock</code>) makes the first request draw, and the other 15 wait and then find their file. Without that lock, the same rendering would run 16 times.</li>
+    <li><strong>The keys are watched</strong>: every 2 seconds, the page asks <code>/tiles/status</code>. If a style file has changed, so has its key, and the layer switches by itself to the new pyramid (<code>setUrl</code>). A tile requested with a stale key gets code 410: nothing is ever drawn into an outdated folder.</li>
+    <li><strong>A click</strong> on the map shows the tile, its metatile, whether it is already cached, and the exact <code>render2d</code> commands that draw it.</li>
+    <li><strong>The grid, the key and the rendering</strong> come from <code>tiles2d</code>'s code: a pre-computed tile and a tile drawn on demand are the same file, in the same place.</li>
+  </ul>
+
+  <h3>The small ecosystem</h3>
+  <pre>render2d    draws       an extent + a size       → an image         (C++)
+tiles2d     cuts        a pyramid                → a cache          (Python)
+viewer2d    shows       a map in the browser, served by either one</pre>
+  <p>Each storey stays simple, testable on its own, and replaceable without touching the others: another engine in <code>render2d</code>, MBTiles in <code>tiles2d</code>, MapLibre in <code>viewer2d</code>.</p>
+</section>
+
+<!-- ============================================================== -->
+<section id="config2">
+  <h2>11. render2d reads <code>viewer.yaml</code> itself <span class="tag">version 1.2</span></h2>
+  <p>Since its version 0.3.8 (its §57), render2d can read the map from a file: <code>render2d --config viewer.yaml</code>. That file is precisely ours. viewer2d no longer has to copy each layer into the command line.</p>
+
+  <h3>The command, before and after</h3>
+<pre>
+before: render2d data/UrbISBuildings_04000_CadastralParcels.fgb
+                 --style ../render2d/styles/parcelles.yaml
+                 data/UrbISBuildings_04000_Buildings.fgb
+                 --style ../render2d/styles/batiments_grands.yaml
+                 … (two more layers)
+                 --bbox 151624.390 170420.110 152227.860 170727.980 --size 1870x982 --pixel-ratio 1.5 -o map.png
+
+after:  render2d --config viewer.yaml
+                 --bbox 151624.390 170420.110 152227.860 170727.980 --size 1870x982 --pixel-ratio 1.5 -o map.png
+</pre>
+  <p>The command shown under the map becomes readable, and it replays as is in a terminal. render2d's report now starts with the file read and every full path: you can see under the map what was really loaded.</p>
+
+  <h3>Two readers, one rule</h3>
+  <p>render2d and editor2d now share the same reader, in C++. viewer2d is in Python: it cannot use it, and keeps its own. The risk is well known: two pieces of code reading the same file end up not understanding it the same way. It is reduced in two ways:</p>
+  <ul>
+    <li>in View mode, viewer2d <strong>no longer reads the layers to draw them</strong>: render2d does. viewer2d keeps from the layers only what it needs for Tiles mode and for the page (the names, the warnings);</li>
+    <li>the rule for <strong>relative paths</strong> is the same everywhere, and tested with the same example on each side: a relative path is read from the file's folder (render2d §57).</li>
+  </ul>
+  <div class="calc"><ol>
+    <li>The file: <code>/projects/maps/viewer2d/viewer.yaml</code>. Its folder: <code>/projects/maps/viewer2d</code>.</li>
+    <li>It contains <code>style: ../render2d/styles/parcelles.yaml</code>.</li>
+    <li>Join them, then "<code>..</code>" goes up one folder: <code>/projects/maps/render2d/styles/parcelles.yaml</code>.</li>
+  </ol></div>
+  <p>Before version 1.2, a relative path was read from the folder viewer2d was started from, while render2d and editor2d read it from the file's folder: the same line did not designate the same file.</p>
+
+  <h3>render2d's version</h3>
+  <p>With a render2d older than 0.3.8, <code>--config</code> would be an "unknown option", and every view would fail. At start-up, viewer2d therefore runs <code>render2d --version</code> once and refuses to start, with a clear message, if the version is too old. A clean refusal at launch is better than an empty map with an error on every move.</p>
+
+  <h3>The two new keys: <code>visible</code> and <code>title</code></h3>
+  <ul>
+    <li><code>visible: false</code>: in View mode, render2d does not draw the layer; in Tiles mode, its box starts unticked.</li>
+    <li><code>title: Buildings</code>: the name shown at the top of the page and in the Tiles mode layer list, instead of the file name.</li>
+  </ul>
+
+  <h3>Tiles mode does not change</h3>
+  <p>Tiles are made <strong>layer by layer</strong> (one pyramid per layer, §10), with tiles2d's command: one source, one style. <code>--config</code> draws all the layers together: it is of no use here. And that is good for the cache: its key is still computed on each layer's files, as before.</p>
+
+  <h3>The files</h3>
+<pre>viewer2d/config.py      relative paths from the file's folder; visible, title; the file's path kept
+viewer2d/render.py      build_command: --config; check_version: render2d 0.3.8 or later
+viewer2d/main.py        the version check at start-up
+viewer2d/page.py        the titles; the hidden layers passed to the page
+static/viewer.js        Tiles mode: the hidden layers unticked at start
+tests/test_viewer2d.py  the short command; relative paths (the example above); the version</pre>
+</section>
+
+<!-- ============================================================== -->
+<section id="refs">
+  <h2>12. References</h2>
+  <ul class="refs">
+    <li><strong>Python</strong>, <code>asyncio</code> module documentation — <a href="https://docs.python.org/3/library/asyncio.html">docs.python.org/3/library/asyncio.html</a>. Event loop, <code>Semaphore</code>, <code>to_thread</code>. Chapter 3.</li>
+    <li><strong>NiceGUI</strong>, documentation — <a href="https://nicegui.io/documentation">nicegui.io/documentation</a>. Pages, <code>app</code> (FastAPI), <code>ui.leaflet</code>. Chapters 2 and 4.</li>
+    <li><strong>FastAPI</strong>, documentation — <a href="https://fastapi.tiangolo.com/">fastapi.tiangolo.com</a>. Typed query parameters, responses, headers. Chapters 2 and 7.</li>
+    <li><strong>Leaflet</strong>, "Non-geographical maps" tutorial (<code>CRS.Simple</code>) — <a href="https://leafletjs.com/examples/crs-simple/crs-simple.html">leafletjs.com</a>. Negative zooms, <code>[y, x]</code> order. Chapters 4 and 5.</li>
+    <li><strong>Leaflet</strong>, API reference — <a href="https://leafletjs.com/reference.html">leafletjs.com/reference.html</a>. <code>imageOverlay</code>, <code>moveend</code>, <code>getBounds</code>, <code>getSize</code>. Chapter 6.</li>
+    <li><strong>OGC, <em>Two Dimensional Tile Matrix Set</em></strong> (17-083r4) and <strong>OGC API – Tiles</strong>. Standardised tile grids and pyramids. Chapter 10.</li>
+    <li><strong>MBTiles Specification</strong> 1.3 — <a href="https://github.com/mapbox/mbtiles-spec">github.com/mapbox/mbtiles-spec</a>. The SQLite schema and the TMS row order. Chapter 10.</li>
+    <li><strong>GDAL, <code>gdal2tiles.py</code></strong> — <a href="https://gdal.org/programs/gdal2tiles.html">gdal.org/programs/gdal2tiles.html</a>. The model of a tiling tool built on top of a renderer. Chapter 10.</li>
+    <li><strong>OGC, <em>Web Map Service</em> 1.3.0</strong> (06-042), 2006. The GetMap request, of which our route is a minimal version. Chapter 1.</li>
+  </ul>
+</section>
+
+<!-- ============================================================== -->
+<section id="road">
+  <h2>13. Roadmap</h2>
+  <ol class="road">
+    <li>Version 1 — Leaflet in Lambert, one image per view, report under the map. ✓</li>
+    <li>Version 1.2 — render2d reads <code>viewer.yaml</code> itself (<code>--config</code>, render2d 0.3.8 or later); relative paths from the file's folder; <code>visible</code> and <code>title</code> (§11). ✓</li>
+    <li>Lambert tiles: <code>/tiles/…/{z}/{x}/{y}.png</code> route with a disk cache shared with <code>tiles2d</code>, on-demand computation by metatile, key watching, debug grid (chapter 10). ✓</li>
+    <li><code>tiles2d</code>, a separate tool: pre-computing one pyramid per layer, metatiles, resuming, preview page. ✓ Next: MBTiles.</li>
+    <li>A click on the map: "what is here?" with <code>render2d --at</code>, the attributes under the map; then a rectangle with <code>--box</code>.</li>
+    <li>Choosing layers and styles from the page (a list taken from <code>viewer.yaml</code>). For this: reloading <code>viewer.yaml</code> without restarting (today read once at start-up; the <em>content</em> of the styles is already followed live).</li>
+    <li>A NiceGUI classification dialog: choose a field, propose classes and a ColorBrewer palette, write the YAML.</li>
+    <li>Tile debugging: one colour per tile (from the cache, drawn on demand, error) and the response time of each.</li>
+    <li>Tiled / untiled mix: an option per layer (<code>tiled: false</code>) to draw a layer as a single image on top of the tiles.</li>
+    <li>After render2d's reprojection: Web Mercator tiles, <code>ui.leaflet</code> and an OpenStreetMap background.</li>
+  </ol>
+</section>
+
+</div>
+
+<script>
+// ---------- shared helpers ----------
+function css(name){return getComputedStyle(document.documentElement).getPropertyValue(name).trim();}
+function setup(cv){
+  const r=window.devicePixelRatio||1, w=cv.width, h=cv.height;
+  if(!cv.dataset.w){cv.dataset.w=w;cv.dataset.h=h;}
+  const W=+cv.dataset.w, H=+cv.dataset.h;
+  cv.width=W*r; cv.height=H*r; cv.style.aspectRatio=W+'/'+H;
+  const ctx=cv.getContext('2d'); ctx.setTransform(r,0,0,r,0,0);
+  return {ctx,W,H};
+}
+function fmt(v,d){ if(d===undefined)d=2; return Number(v).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:d}); }
+function evPos(cv,e){const b=cv.getBoundingClientRect(),W=+cv.dataset.w,H=+cv.dataset.h;return {x:(e.clientX-b.left)*W/b.width,y:(e.clientY-b.top)*H/b.height};}
+
+
+// ---------- demo : zoom -> resolution -> rule ----------
+(function(){
+  const zin=document.getElementById('z-in'), out=document.getElementById('out-zoom');
+  zin.addEventListener('input',run);
+  function run(){
+    const z=parseFloat(zin.value), ppm=Math.pow(2,z), res=1/ppm, den=res/0.00028;
+    let s='zoom '+fmt(z,2)+'\n';
+    s+='pixels per metre = 2^'+fmt(z,2)+' = '+fmt(ppm,4)+'\n';
+    s+='resolution       = 1 ÷ '+fmt(ppm,4)+' = '+fmt(res,3)+' m/px\n';
+    s+='scale            = '+fmt(res,3)+' ÷ 0.00028 = 1:'+fmt(Math.round(den),0)+'\n';
+    s+='a 6 m house is '+fmt(6*ppm,2)+' px\n\n';
+    s+='buildings style: rule "'+(den<15000?'near" (outlines)':'far" (flat fill, no outline)');
+    out.textContent=s;
+  }
+  run();
+})();
+// ---------- demo : async timeline ----------
+(function(){
+  const cv=document.getElementById('cv-async'), out=document.getElementById('out-async');
+  const sl=document.getElementById('as-slots'), sv=document.getElementById('as-slots-v'), bl=document.getElementById('as-block');
+  sl.addEventListener('input',draw); bl.addEventListener('change',draw);
+  const reqs=[{n:'image A',t:0,kind:'r'},{n:'file',t:10,kind:'f'},{n:'image B',t:30,kind:'r'},{n:'image C',t:60,kind:'r'},{n:'image D',t:90,kind:'r'}];
+  const R=200, F=2;
+  function schedule(slots, blocking){
+    const res=[];
+    if(blocking){ // the loop itself does the work: one thing at a time, in arrival order
+      let free=0;
+      for(const q of reqs){ const st=Math.max(q.t,free), d=q.kind==='r'?R:F; res.push({...q,start:st,end:st+d}); free=st+d; }
+      return res;
+    }
+    const slotFree=new Array(slots).fill(0);
+    for(const q of reqs){
+      if(q.kind==='f'){ res.push({...q,start:q.t,end:q.t+F}); continue; }
+      let k=0; for(let i=1;i<slots;i++) if(slotFree[i]<slotFree[k]) k=i;
+      const st=Math.max(q.t,slotFree[k]); slotFree[k]=st+R; res.push({...q,start:st,end:st+R});
+    }
+    return res;
+  }
+  function draw(){
+    const slots=parseInt(sl.value,10), blocking=bl.checked; sv.textContent=slots;
+    const {ctx,W,H}=setup(cv), res=schedule(slots,blocking);
+    ctx.clearRect(0,0,W,H);
+    const left=70, right=W-10, top=10, row=36, tmax=1000;
+    const X=t=>left+(right-left)*t/tmax;
+    ctx.font='11px system-ui'; ctx.strokeStyle=css('--grid'); ctx.fillStyle=css('--muted');
+    for(let t=0;t<=tmax;t+=200){ ctx.beginPath(); ctx.moveTo(X(t),top); ctx.lineTo(X(t),top+row*res.length); ctx.stroke(); ctx.fillText(t+' ms',t===tmax?X(t)-42:X(t)-12,top+row*res.length+14); }
+    res.forEach((r,i)=>{
+      const y=top+i*row;
+      ctx.fillStyle=css('--ink'); ctx.fillText(r.n,4,y+20);
+      ctx.fillStyle=css('--muted'); ctx.globalAlpha=.35; ctx.fillRect(X(r.t),y+8,Math.max(1,X(r.start)-X(r.t)),16); ctx.globalAlpha=1;
+      ctx.fillStyle=css(r.kind==='r'?'--accent2':'--ok'); ctx.fillRect(X(r.start),y+8,Math.max(3,X(r.end)-X(r.start)),16);
+    });
+    let s=blocking?'Blocking call: the loop does the work itself, one thing at a time.\n':'With await: '+slots+' rendering(s) at a time; files are served at once.\n';
+    s+='(grey: waiting; colour: working)\n\n';
+    res.forEach(r=>{ s+=r.n.padEnd(8)+' asked at '+String(r.t).padStart(3)+' ms → served at '+String(r.end).padStart(4)+' ms (waited '+(r.start-r.t)+' ms)\n'; });
+    const fileRes=res.find(r=>r.kind==='f');
+    s+='\nThe file waits '+(fileRes.start-fileRes.t)+' ms.';
+    if(blocking) s+=' During a rendering, nothing else is served.';
+    out.textContent=s;
+  }
+  draw();
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change',draw);
+})();
+// ---------- demo : point -> tile ----------
+(function(){
+  const ix=document.getElementById('tl-x'), iy=document.getElementById('tl-y'), iz=document.getElementById('tl-z'), zv=document.getElementById('tl-zv'), out=document.getElementById('out-tile');
+  [ix,iy,iz].forEach(e=>e.addEventListener('input',run));
+  function run(){
+    const X=parseFloat(ix.value), Y=parseFloat(iy.value), z=parseInt(iz.value,10); zv.textContent=z;
+    if(!isFinite(X)||!isFinite(Y)){out.textContent='Enter two numbers.';return;}
+    const k=Math.pow(2,z), side=256/k;
+    const fx=X*k/256, fy=-Y*k/256, tx=Math.floor(fx), ty=Math.floor(fy);
+    const x0=tx*side, x1=x0+side, y1=-ty*side, y0=y1-side;
+    let s='zoom '+z+': a tile covers 256 × 2^'+(-z)+' = '+fmt(side,3)+' m\n\n';
+    s+='x = floor('+fmt(X,2)+' × 2^'+z+' ÷ 256) = floor('+fmt(fx,3)+') = '+tx+'\n';
+    s+='y = floor(−'+fmt(Y,2)+' × 2^'+z+' ÷ 256) = floor('+fmt(fy,3)+') = '+ty+'\n\n';
+    s+='tile '+z+'/'+tx+'/'+ty+'\n';
+    s+='extent X: '+fmt(x0,3)+' → '+fmt(x1,3)+'\n';
+    s+='extent Y: '+fmt(y0,3)+' → '+fmt(y1,3)+'\n\n';
+    s+='render2d … --bbox '+[x0,y0,x1,y1].map(v=>+v.toFixed(3)).join(' ')+' --size 256x256 --background none';
+    out.textContent=s;
+  }
+  run();
+})();
+</script>
+</body>
+</html>

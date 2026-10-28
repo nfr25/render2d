@@ -1,0 +1,18 @@
+# Buildings: outlines when zoomed in, a flat fill without outline when zoomed out.
+# notions §23 and §24.
+name: batiments
+feature-styles:
+- rules:
+  - name: proche
+    scale: [min, 15000]           # scales larger than 1:15 000
+    symbolizers:
+    - polygon:
+        fill-color: '#C98B6B'
+        stroke-color: '#7A4A35'
+        stroke-width: 0.8
+        stroke-linejoin: round
+  - name: loin
+    scale: [15000, max]           # from 1:15 000 to smaller scales
+    symbolizers:
+    - polygon:
+        fill-color: '#8E7B6B'     # no stroke-color: no outline

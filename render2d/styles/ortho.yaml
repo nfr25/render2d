@@ -1,0 +1,10 @@
+# A raster layer (notions §66): an orthophoto or a terrain model, a little
+# faded so that the vector layers drawn above it stand out.
+name: ortho
+feature-styles:
+- rules:
+  - name: ortho
+    scale: [min, 20000]
+    symbolizers:
+    - raster:
+        opacity: 0.6

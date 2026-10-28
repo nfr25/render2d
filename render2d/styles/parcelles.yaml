@@ -1,0 +1,14 @@
+# Parcels: a pale ground everywhere, boundaries only when zoomed in.
+name: parcelles
+feature-styles:
+- rules:
+  - name: fond
+    symbolizers:
+    - polygon:
+        fill-color: '#F2EBDD'
+  - name: limites
+    scale: [min, 10000]
+    symbolizers:
+    - line:
+        stroke-color: '#B5AC9E'
+        stroke-width: 0.6

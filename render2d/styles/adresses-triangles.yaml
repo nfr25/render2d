@@ -1,0 +1,15 @@
+# Doors as small triangles pointing along the facade. notions §40, §41.
+# A triangle at rotation 0 points north; CARTOANGLE counts anticlockwise
+# from east; SLD turns clockwise: 90 - CARTOANGLE. No "upside down" rule for marks.
+name: adresses-triangles
+feature-styles:
+- rules:
+  - name: portes
+    filter: ${PARENTID IS NULL}
+    scale: [min, 10000]
+    symbolizers:
+    - point:
+        size: 9
+        rotation: ${90 - CARTOANGLE}
+        symbols:
+        - mark: {shape: triangle, fill-color: '#B5541C', stroke-color: '#FFFFFF', stroke-width: 1}

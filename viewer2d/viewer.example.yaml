@@ -1,0 +1,73 @@
+# viewer2d configuration, an example to copy:
+#     copy viewer.example.yaml viewer.yaml      (then adapt the paths)
+# viewer.yaml itself is not in git: it holds the paths of one computer.
+#
+# Read by viewer2d, by render2d (--config) and by editor2d (File > Open).
+# Relative paths are read from THIS file's folder, wherever the program is
+# started from. Full paths (C:/..., /data/...) and connection strings (PG:...)
+# are kept as written. In "file.gpkg::layer", only the part before "::" is a
+# path. See docs/notions.en.html §11 and render2d's notes §57.
+
+# The render2d executable (viewer2d only; render2d and editor2d ignore it).
+render2d: ../render2d/build-release/render2d.exe
+
+# Drawn in this order, the first at the bottom.
+#   source   a file, a layer of a file (file::layer), or a database table
+#   style    a YSLD file; optional: without it, render2d's default style
+#   visible  false: not drawn at start (ticked later in the page or in editor2d)
+#   title    a readable name for the layers list; optional
+layers:
+
+  # A raster at the bottom: an orthophoto (GeoTIFF; a COG with overviews is
+  # best for a large one). Same coordinate system as the map, for now.
+  - source: data/ortho/ortho_2024.tif
+    style:  ../render2d/styles/ortho.yaml          # opacity 0.6, hidden beyond 1:20,000
+    title:  Orthophoto 2024
+    visible: false
+
+  # FlatGeobuf: one file, one layer, with its spatial index. The fastest.
+  - source: data/urbis/UrbISBuildings_04000_CadastralParcels.fgb
+    style:  ../render2d/styles/parcelles.yaml
+    title:  Cadastral parcels
+
+  # One layer of a GeoPackage: "file::layer".
+  - source: data/urbis/UrbISVector_04000.gpkg::Buildings
+    style:  ../render2d/styles/batiments.yaml
+    title:  Buildings
+
+  # A shapefile (the .shp; the .dbf, .shx, .prj and .qix sit next to it).
+  - source: data/topo/shp/arbres.shp
+    style:  ../render2d/styles/topo-points.yaml
+    title:  Trees
+
+  # GeoJSON: handy for small hand-made layers. Its coordinates must be in the
+  # map's system (here Lambert 72, EPSG:31370) until reprojection arrives.
+  - source: data/notes/zones.geojson
+    title:  Study zones
+
+  # A PostGIS table, through GDAL's driver: "PG:connection::schema.table".
+  # NEVER put the password here: it goes in pgpass.conf
+  # (%APPDATA%\postgresql\pgpass.conf on Windows, ~/.pgpass elsewhere).
+  # connect_timeout=5: a silent server gives up after 5 s instead of waiting.
+  # Hidden at start, so that the map opens even when the server is away.
+  - source: 'PG:host=db.example.org dbname=gis user=gisuser connect_timeout=5::public.municipalities'
+    title:  Municipalities (PostGIS)
+    visible: false
+
+  # Labels on top: the address numbers, drawn only at large scales.
+  - source: data/urbis/UrbISBuildings_04000_Addresses.fgb
+    style:  ../render2d/styles/adresses-numeros.yaml
+    title:  Addresses
+
+# First view, in Lambert 72 metres: [xmin, ymin, xmax, ymax] (here: Brussels).
+# Optional for render2d and editor2d (otherwise: all layers); required by viewer2d.
+start:
+  bbox: [148000, 168000, 156000, 175000]
+
+# viewer2d only: how many render2d may run at the same time.
+max_parallel: 2
+
+# viewer2d only, tile mode: the cache folder shared with tiles2d, and the
+# metatile size (4 = 4 x 4 tiles drawn at once, so labels join at the edges).
+tiles: cache/tiles
+metatile: 4

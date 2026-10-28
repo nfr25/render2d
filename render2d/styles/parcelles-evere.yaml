@@ -1,0 +1,12 @@
+# Parcels: Evere in colour, the 18 other communes in light grey. notions §31.
+name: parcelles-evere
+feature-styles:
+- rules:
+  - name: evere
+    filter: ${MUNNISCODE = '21006'}
+    symbolizers:
+    - polygon: {fill-color: '#E6A15C', stroke-color: '#FFFFFF', stroke-width: 0.5}
+  - name: autres
+    else: true
+    symbolizers:
+    - polygon: {fill-color: '#E4E1DA', stroke-color: '#FFFFFF', stroke-width: 0.5}
