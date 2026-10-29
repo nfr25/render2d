@@ -22,6 +22,9 @@ pkg_check_modules(CAIRO REQUIRED IMPORTED_TARGET cairo)
 find_package(GDAL REQUIRED)
 # MSYS2: mingw-w64-ucrt-x86_64-yaml-cpp.
 pkg_check_modules(YAMLCPP REQUIRED IMPORTED_TARGET yaml-cpp)
+# MSYS2: comes with GDAL (mingw-w64-ucrt-x86_64-proj). Only to name the way
+# PROJ takes between two systems, in the report (§70).
+pkg_check_modules(PROJ REQUIRED IMPORTED_TARGET proj)
 
 # --- core: pure maths, no dependency (notions §3 to §8) ---------------------
 add_library(r2d_core STATIC
@@ -48,8 +51,9 @@ add_library(r2d_gdal STATIC
     src/backend/gdal/gdal_convert.cpp
     src/backend/gdal/gdal_layer.cpp
     src/backend/gdal/gdal_raster.cpp   # the rasters: the view's window, to pixels (§65, §66)
+    src/backend/gdal/gdal_reproject.cpp   # each layer in the map's CRS (§69, §70)
 )
-target_link_libraries(r2d_gdal PUBLIC r2d_core PRIVATE GDAL::GDAL r2d_warnings)
+target_link_libraries(r2d_gdal PUBLIC r2d_core PRIVATE GDAL::GDAL PkgConfig::PROJ r2d_warnings)
 
 # --- style: the SLD model, expressions and the YSLD reader (§22 to §29, §35) --
 add_library(r2d_style STATIC
@@ -146,6 +150,10 @@ add_test(NAME classify COMMAND test_classify)
 add_executable(test_raster tests/test_raster.cpp)   # §65, §66: the checkerboard and the DSM
 target_link_libraries(test_raster PRIVATE r2d_map r2d_cairo GDAL::GDAL r2d_warnings)   # GDAL: to write the GeoTIFFs
 add_test(NAME raster COMMAND test_raster)
+
+add_executable(test_reproject tests/test_reproject.cpp)   # §69, §70: the Grand-Place, maps in two systems
+target_link_libraries(test_reproject PRIVATE r2d_map r2d_cairo r2d_warnings)
+add_test(NAME reproject COMMAND test_reproject)
 
 add_executable(test_hit tests/test_hit.cpp)
 target_link_libraries(test_hit PRIVATE r2d_render r2d_warnings)

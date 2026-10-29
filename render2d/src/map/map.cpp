@@ -7,6 +7,7 @@
 #include <cstdio>
 
 #include "backend/gdal/gdal_raster.hpp"
+#include "backend/gdal/gdal_reproject.hpp"
 #include "render/labels.hpp"
 #include "render/symbolize.hpp"
 #include "style/expression.hpp"
@@ -94,6 +95,15 @@ struct Map::Layer {
     std::optional<Style>       scaledStyle;      // the same, times the pixel ratio
     std::array<Style, 3>       defaults;         // per GeomType, scaled
 
+    // §70: in the map's CRS. Both empty when the layer's CRS is the map's.
+    std::unique_ptr<CrsTransform>     toMap;
+    std::unique_ptr<ReprojectedLayer> reprojected;
+    std::optional<Envelope>           mapExtent;      // the extent, converted
+    bool                              unusable = false;   // another CRS, and no way to the map's: not drawn
+
+    // What renderLayer and the queries read: the layer, or the layer converted.
+    FeatureSource& features() { return reprojected ? static_cast<FeatureSource&>(*reprojected) : *source; }
+
     void scale(double ratio) {
         if (style) scaledStyle = r2d::scaledStyle(*style, ratio);
         for (int t = 0; t < 3; ++t) defaults[t] = r2d::scaledStyle(defaultStyle(kTypes[t], index), ratio);
@@ -155,26 +165,69 @@ std::unique_ptr<Map::Layer> Map::openLayer(const LayerSpec& spec, int colour,
     return layer;
 }
 
-// No reprojection yet (step 4b): the map uses the first declared CRS; the
-// vector layers in another are drawn as they are, with a warning, the
-// rasters are not drawn (§66).
-std::optional<std::string> Map::crsWarning(const Layer& layer) const {
-    const CrsInfo& mapCrs = crs();
+// §70: a hand-made GeoJSON in Lambert metres claims degrees (crsBelievable).
+static bool notReallyDegrees(const LayerInfo& li) { return !crsBelievable(li.crs, li.extent); }
+
+// §70: the layer in the map's CRS. The same system: nothing at all (the
+// image is the same to the byte). Another: a conversion, prepared once.
+void Map::bindLayer(Layer& layer, std::vector<std::string>& warnings) const {
+    layer.reprojected.reset();
+    layer.toMap.reset();
+    layer.mapExtent.reset();
+    layer.unusable = false;
     const LayerInfo& li = layer.info();
-    if (!li.crs.known) return li.name + ": no CRS declared, assumed to be the map CRS";
-    if (mapCrs.known && li.crs.epsg != mapCrs.epsg) {
-        if (li.raster)
-            return li.name + ": CRS " + crsLabel(li.crs) + " differs from the map CRS " + crsLabel(mapCrs) +
-                   ": a raster is not drawn without reprojection (step 4b)";
-        return li.name + ": CRS " + crsLabel(li.crs) + " differs from the map CRS " + crsLabel(mapCrs) +
-               ", drawn without reprojection";
+    if (!li.crs.known) {
+        if (crs_.known) warnings.push_back(li.name + ": no CRS declared, assumed to be the map CRS");
+        return;
     }
-    return std::nullopt;
+    if (notReallyDegrees(li)) {
+        if (crs_.known)   // as for "no CRS declared": said only when there is a map CRS to assume
+            warnings.push_back(li.name + ": declared in degrees (" + crsLabel(li.crs) + ") but its coordinates are not "
+                               "(GeoJSON without \"crs\"?): assumed to be the map CRS");
+        return;
+    }
+    if (sameCrs(li.crs, crs_)) return;
+    if (layer.raster) {   // 4b-2: warping
+        warnings.push_back(li.name + ": CRS " + crsLabel(li.crs) + " differs from the map CRS " + crsLabel(crs_) +
+                           ": a raster is not reprojected yet (step 4b-2), not drawn");
+        layer.unusable = true;
+        return;
+    }
+    std::string error;
+    layer.toMap = CrsTransform::create(li.crs, crs_, li.extent, error);
+    if (!layer.toMap) {
+        warnings.push_back(li.name + ": " + error + ", not drawn");
+        layer.unusable = true;
+        return;
+    }
+    layer.reprojected = std::make_unique<ReprojectedLayer>(*layer.source, *layer.toMap);
+    if (li.extent) layer.mapExtent = layer.toMap->forwardBounds(*li.extent);
 }
 
-Map Map::open(const std::vector<LayerSpec>& specs, double pixelRatio) {
+bool Map::takeCrsFrom(const Layer& layer, std::vector<std::string>& warnings) {
+    if (crsGiven_ || crs_.known) return false;
+    const CrsInfo& c = layer.info().crs;
+    if (!c.known || notReallyDegrees(layer.info())) return false;
+    crs_ = crsForMap(c);
+    if (c.geographic)   // §70: a map in degrees is refused
+        warnings.push_back(layer.info().name + " is in degrees (" + crsLabel(c) +
+                           "): the map uses EPSG:3857 (Web Mercator); --crs chooses another");
+    return true;
+}
+
+void Map::setCrs(const CrsInfo& crs, std::vector<std::string>& warnings) {
+    crs_      = crs;
+    crsGiven_ = true;
+    for (auto& layer : layers_) bindLayer(*layer, warnings);
+}
+
+Map Map::open(const std::vector<LayerSpec>& specs, double pixelRatio, const std::optional<CrsInfo>& crs) {
     Map map;
     map.pixelRatio_ = pixelRatio;
+    if (crs) {
+        map.crs_      = *crs;
+        map.crsGiven_ = true;
+    }
 
     // 1. Open the layers. A missing one is a warning: the others are drawn.
     //    The colour: given, or the position among the layers OPENED (§46).
@@ -182,9 +235,11 @@ Map Map::open(const std::vector<LayerSpec>& specs, double pixelRatio) {
         const int colour = spec.colour >= 0 ? spec.colour : static_cast<int>(map.layers_.size());
         if (auto layer = map.openLayer(spec, colour, map.warnings_)) map.layers_.push_back(std::move(layer));
     }
-    // 2. CRS check, once all are open: the first layer gives the map's CRS.
+    // 2. The map's CRS (§70): given, or the first declared one; then each
+    //    layer in it.
     for (const auto& layer : map.layers_)
-        if (auto w = map.crsWarning(*layer)) map.warnings_.push_back(*w);
+        if (map.takeCrsFrom(*layer, map.warnings_)) break;
+    for (const auto& layer : map.layers_) map.bindLayer(*layer, map.warnings_);
     return map;
 }
 
@@ -193,9 +248,13 @@ bool Map::addLayer(const LayerSpec& spec, int at, std::vector<std::string>& warn
     auto layer = openLayer(spec, colour, warnings);
     if (!layer) return false;
     if (at < 0 || at > layerCount()) at = layerCount();   // on top
-    const Layer& added = *layer;
+    Layer& added = *layer;
     layers_.insert(layers_.begin() + at, std::move(layer));
-    if (auto w = crsWarning(added)) warnings.push_back(*w);
+    if (takeCrsFrom(added, warnings)) {
+        for (auto& l : layers_) bindLayer(*l, warnings);   // the first with a CRS: the others follow it
+    } else {
+        bindLayer(added, warnings);
+    }
     return true;
 }
 
@@ -226,19 +285,23 @@ void Map::moveLayer(int from, int to) {
     layers_.insert(layers_.begin() + to, std::move(layer));
 }
 
-const CrsInfo& Map::crs() const {
-    static const CrsInfo none;
-    for (const auto& layer : layers_)   // the first that declares one (a TIFF with a world file has none)
-        if (layer->info().crs.known) return layer->info().crs;
-    return layers_.empty() ? none : layers_.front()->info().crs;
-}
-
 std::optional<Envelope> Map::extent() const {
     std::optional<Envelope> area;
-    for (const auto& layer : layers_) {
-        if (const auto& e = layer->info().extent) area = area ? area->merged(*e) : *e;
-    }
+    for (int i = 0; i < layerCount(); ++i)
+        if (const auto e = layerExtent(i)) area = area ? area->merged(*e) : *e;
     return area;
+}
+
+std::optional<Envelope> Map::layerExtent(int i) const {
+    const Layer& layer = *layers_.at(static_cast<std::size_t>(i));
+    if (layer.unusable) return std::nullopt;
+    return layer.toMap ? layer.mapExtent : layer.info().extent;
+}
+
+const std::string& Map::layerReprojection(int i) const {
+    static const std::string none;
+    const Layer& layer = *layers_.at(static_cast<std::size_t>(i));
+    return layer.toMap ? layer.toMap->description() : none;
 }
 
 const LayerInfo& Map::layerInfo(int i) const { return layers_.at(i)->info(); }
@@ -262,7 +325,7 @@ MapReport Map::render(Canvas& cv, const View& view, const std::function<bool()>&
     using Clock = std::chrono::steady_clock;
 
     MapReport report;
-    report.crs  = crs();
+    report.crs  = crs_;
     report.view = view;
     report.view.pixelRatio = pixelRatio_;   // §39: scale and styles agree
     const View& v = report.view;
@@ -274,22 +337,21 @@ MapReport Map::render(Canvas& cv, const View& view, const std::function<bool()>&
         if (stop && stop()) { report.stopped = true; break; }
 
         const LayerInfo& li = layer->info();
+        if (layer->unusable) {   // §70: said when opened
+            warn(li.name + ": not drawn, its CRS cannot be converted to the map's");
+            continue;
+        }
         if (layer->raster) {   // §66
-            const CrsInfo& mapCrs = report.crs;
-            if (li.crs.known && mapCrs.known && li.crs.epsg != mapCrs.epsg) {
-                warn(li.name + ": not drawn, its CRS differs from the map's (reprojection: step 4b)");
-                continue;
-            }
             const LayerRenderStats st = renderRaster(*layer->raster, cv, v,
                                                      layer->scaledStyle ? &*layer->scaledStyle : nullptr,
                                                      report.warnings);
-            report.layers.push_back({li.name, st});
+            report.layers.push_back({li.name, st, {}});
             if (st.passes == 0) warn(li.name + ": no rule of the style applies at scale 1:" +
                                      std::to_string(static_cast<long>(std::lround(v.scaleDenominator()))));
             continue;
         }
-        const LayerRenderStats st = renderLayer(*layer->source, cv, v, layer->styles(), &labels);
-        report.layers.push_back({li.name, st});
+        const LayerRenderStats st = renderLayer(layer->features(), cv, v, layer->styles(), &labels);
+        report.layers.push_back({li.name, st, layer->toMap ? layer->toMap->description() : std::string()});
 
         const ReadStats& rs = st.read;
         if (!st.missingFields.empty()) {
@@ -306,6 +368,7 @@ MapReport Map::render(Canvas& cv, const View& view, const std::function<bool()>&
                                  std::to_string(static_cast<long>(std::lround(v.scaleDenominator()))));
         if (rs.empty)       warn(li.name + ": " + std::to_string(rs.empty) + " empty geometries skipped");
         if (rs.unsupported) warn(li.name + ": " + std::to_string(rs.unsupported) + " geometries of an unsupported type skipped");
+        if (rs.outside)     warn(li.name + ": " + std::to_string(rs.outside) + " features outside the map's system skipped");
     }
 
     // The labels of all the layers, on top. §35. Not for an abandoned view.
@@ -328,8 +391,8 @@ std::vector<QueryHit> Map::queryAt(const View& view, Point pixel, double toleran
     std::vector<QueryHit> hits;
     for (int i = layerCount() - 1; i >= 0; --i) {   // the top layer first (§52)
         Layer& layer = *layers_[static_cast<std::size_t>(i)];
-        if (!layer.visible || !layer.source) continue;   // a raster has no feature (§66)
-        for (LayerHit& h : queryLayer(*layer.source, v, world, tolerancePx, layer.styles()))
+        if (!layer.visible || !layer.source || layer.unusable) continue;   // a raster has no feature (§66)
+        for (LayerHit& h : queryLayer(layer.features(), v, world, tolerancePx, layer.styles()))
             hits.push_back({i, h.fid, std::move(h.geometry), std::move(h.attributes)});
     }
     return hits;
@@ -357,10 +420,10 @@ AreaQuery Map::queryArea(const View& view, const std::vector<Point>& ring, std::
 
     for (int i = layerCount() - 1; i >= 0 && !out.truncated; --i) {   // the top layer first
         Layer& layer = *layers_[static_cast<std::size_t>(i)];
-        if (!layer.visible || !layer.source) continue;   // a raster has no feature (§66)
+        if (!layer.visible || !layer.source || layer.unusable) continue;   // a raster has no feature (§66)
         // What is left for this layer; 0 left: one more feature makes it truncated.
         const std::size_t left = maxHits == 0 ? kNoLimit : maxHits - out.hits.size();
-        for (LayerHit& h : queryLayerArea(*layer.source, v, zone, layer.styles(), left, out.truncated))
+        for (LayerHit& h : queryLayerArea(layer.features(), v, zone, layer.styles(), left, out.truncated))
             out.hits.push_back({i, h.fid, std::move(h.geometry), std::move(h.attributes)});
     }
     return out;
@@ -382,7 +445,12 @@ AreaQuery Map::queryWhere(int i, const std::string& where, std::size_t maxHits) 
         out.error = layerInfo(i).name + " is a raster: it has no attributes";
         return out;
     }
-    GdalLayer& source = *layers_[static_cast<std::size_t>(i)]->source;
+    Layer& layer = *layers_[static_cast<std::size_t>(i)];
+    if (layer.unusable) {
+        out.error = layerInfo(i).name + ": its CRS cannot be converted to the map's";
+        return out;
+    }
+    GdalLayer& source = *layer.source;
     if (const auto unknown = e->bind(source.fields()); !unknown.empty()) {
         out.error = "no field '" + unknown.front() + "' in " + source.info().name;
         return out;
@@ -404,9 +472,10 @@ AreaQuery Map::queryWhere(int i, const std::string& where, std::size_t maxHits) 
     std::vector<int> all(source.fields().size());
     for (std::size_t c = 0; c < all.size(); ++c) all[c] = static_cast<int>(c);
     source.setNeededFields(all);
-    source.forFids(fids, [&](const Geometry& g, const Attributes& a, FeatureId fid) {
-        out.hits.push_back({i, fid, g, a});
-    });
+    // §70: the geometries in the map's CRS, as for a click.
+    auto keep = [&](const Geometry& g, const Attributes& a, FeatureId fid) { out.hits.push_back({i, fid, g, a}); };
+    if (layer.reprojected) layer.reprojected->forFids(fids, keep);
+    else                   source.forFids(fids, keep);
     return out;
 }
 
@@ -415,6 +484,7 @@ AreaQuery Map::queryWhere(int i, const std::string& where, std::size_t maxHits) 
 std::string crsLabel(const CrsInfo& c) {
     if (!c.known) return "none";
     if (c.epsg != 0) return "EPSG:" + std::to_string(c.epsg) + " (" + c.name + ")";
+    if (!c.code.empty()) return c.code + " (" + c.name + ")";   // "OGC:CRS84 (WGS 84 (CRS84))"
     return c.name;
 }
 
@@ -441,6 +511,7 @@ std::vector<std::string> reportLines(const MapReport& r) {
         if (st.filtered) line += format("filters %.1f ms, ", st.filterMs);
         line += format("draw %.1f ms, %d pass%s)", st.drawMs, st.passes, st.passes == 1 ? "" : "es");
         lines.push_back(line);
+        if (!lr.reprojection.empty()) lines.push_back("      reprojected " + lr.reprojection);   // §70
 
         // §30, §31: what the filters read and what each rule drew.
         if (st.filtered) {

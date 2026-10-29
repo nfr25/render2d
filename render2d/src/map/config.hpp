@@ -16,7 +16,8 @@ namespace r2d {
 struct Config {
     std::string             path;        // the file read
     std::vector<LayerSpec>  layers;      // drawn in this order, first at the bottom
-    std::optional<Envelope> startBbox;   // start: bbox, if given
+    std::optional<Envelope> startBbox;   // start: bbox, if given (in the map's CRS)
+    std::string             crs;         // §70: "EPSG:3857" as written; "" = the first layer's
 };
 
 struct ConfigResult {
@@ -26,7 +27,8 @@ struct ConfigResult {
     std::vector<std::string> warnings;   // unknown keys: often a typo
 };
 
-// Reads `layers` (source, style, visible, title) and `start: bbox`. The keys
+// Reads `crs` (§70: checked, a CRS in metres), `layers` (source, style,
+// visible, title) and `start: bbox`. The keys
 // of viewer2d (render2d, max_parallel, tiles, metatile) are ignored; any other key is a
 // warning. Relative paths are taken from the folder of the file, not from the
 // current folder. Missing data files are NOT checked here: Map::open reports

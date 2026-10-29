@@ -170,8 +170,12 @@ th{background:var(--code)}
   <strong style="margin-top:8px">Cheat sheet</strong>
   <a href="#postgis">67. PostGIS, for those who know Oracle</a>
   <a href="#windows">68. A Windows executable</a>
-  <a href="#refs">69. References</a>
-  <a href="#road">70. Roadmap</a>
+  <strong style="margin-top:8px">Step 4b — reprojection</strong>
+  <a href="#crs">69. Coordinate systems, on the Grand-Place</a>
+  <a href="#reproject">70. Reprojecting on the fly</a>
+  <a href="#osm">71. Testing with OpenStreetMap</a>
+  <a href="#refs">72. References</a>
+  <a href="#road">73. Roadmap</a>
 </nav>
 
 <!-- ============================================================== -->
@@ -2651,8 +2655,193 @@ PROJ data: C:\Tools\render2d-0.4.4-windows-x64\share\proj (beside the executable
 </section>
 
 <!-- ============================================================== -->
+<section id="crs">
+  <h2>69. Coordinate systems, worked out on the Grand-Place <span class="tag">step 4b</span></h2>
+  <p>Until now, every layer was in Belgian Lambert 72 (EPSG:31370), and render2d refused the others ("not drawn, its CRS differs from the map's"). OpenStreetMap data comes in longitude and latitude (EPSG:4326), its tiles in Web Mercator (EPSG:3857). Before drawing them on a Lambert map, here is what these three systems are, on one point everybody knows: the centre of the Grand-Place, about <strong>50.846777° N, 4.352360° E</strong>.</p>
+
+  <h3>Three ingredients: an ellipsoid, a datum, a projection</h3>
+  <ul>
+    <li><strong>The ellipsoid</strong>: the Earth, flattened at the poles. Lambert 72 uses the International 1924 ellipsoid (equatorial radius 6,378,388 m); GPS uses WGS 84 (6,378,137 m). 251 m of difference in radius.</li>
+    <li><strong>The datum</strong>: <em>where</em> that ellipsoid is placed against the real Earth. BD72 (Belgian Datum 1972) was fitted to Belgium by triangulation; WGS 84 to the whole planet by satellites. Their centres are about a hundred metres apart.</li>
+    <li><strong>The projection</strong>: the formula that flattens the ellipsoid onto the map. Lambert 72 is a cone touching Belgium along two parallels (49°50′ and 51°10′); Web Mercator is a cylinder around the equator.</li>
+  </ul>
+  <p>EPSG:4326 is only the first two: an ellipsoid and a datum, angles in degrees, no projection. EPSG:31370 and EPSG:3857 have all three, and their coordinates are metres on a flat map.</p>
+
+  <h3>Web Mercator by hand</h3>
+  <p>Web Mercator takes the WGS 84 angles and treats the Earth as a <em>sphere</em> of radius R = 6,378,137 m. Two formulas: x = R × λ, and y = R × ln(tan(45° + φ ÷ 2)), angles in radians.</p>
+  <div class="calc"><strong>The Grand-Place in EPSG:3857</strong><ol>
+    <li>λ = 4.352360° × π ÷ 180 = <strong>0.0759630</strong> rad.</li>
+    <li>x = 6,378,137 × 0.0759630 = <strong>484,502.5 m</strong> east of the Greenwich meridian (along the equator's scale).</li>
+    <li>45° + 50.846777° ÷ 2 = 45° + 25.423389° = 70.423389°, i.e. 1.2291200 rad. tan(70.423389°) = <strong>2.811958</strong>.</li>
+    <li>ln(2.811958) = 1.033881; y = 6,378,137 × 1.033881 = <strong>6,594,235.0 m</strong>.</li>
+    <li>PROJ (<code>cs2cs EPSG:4326 EPSG:3857</code>) gives 484,502.499 / 6,594,234.971: the same, to the millimetre. No datum change: it is pure arithmetic.</li>
+  </ol></div>
+  <p>The price of the sphere and the cylinder: at latitude φ, a Mercator metre is worth only cos φ ground metres.</p>
+  <div class="calc"><strong>How long is a Mercator metre in Brussels?</strong><ol>
+    <li>cos 50.846777° = <strong>0.6314</strong>: one Mercator "metre" is 63 cm on the ground; one ground metre is 1 ÷ 0.6314 = <strong>1.584</strong> Mercator metres.</li>
+    <li>A 100 m façade measures 158.4 "m" on a 3857 map. Distances and areas read on such a map are wrong (areas by 1.584² = 2.51 times): they must be measured in Lambert, or on the ellipsoid.</li>
+    <li>For the eye it does not matter: Mercator is conformal (angles are kept), so around one city a 3857 map looks exactly like a Lambert map, simply at another scale.</li>
+  </ol></div>
+
+  <h3>Lambert 72: the datum matters</h3>
+  <p>The cone's formula is longer (IOGP's Guidance Note 7-2 gives it), and PROJ applies it. What deserves to be seen by hand is the datum:</p>
+  <div class="calc"><strong>The Grand-Place in EPSG:31370, two ways</strong><ol>
+    <li>Done properly (<code>cs2cs EPSG:4326 EPSG:31370</code>): PROJ first moves the point from WGS 84 to BD72 (a "Helmert" transformation: 3 shifts, 3 small rotations, a scale factor; here x −106.9 m, y +52.3 m, z −103.7 m…), then projects. Result: <strong>X = 148,845.6 · Y = 170,708.2</strong>.</li>
+    <li>Done naively: the same angles, the same cone, but without the datum change, as if WGS 84 angles were BD72 angles. Result: X = 148,934.7 · Y = 170,647.6.</li>
+    <li>Difference: 148,934.7 − 148,845.6 = 89.1 m in X, 170,647.6 − 170,708.2 = −60.6 m in Y; √(89.1² + 60.6²) = √(7,938.8 + 3,672.4) = √11,611.2 = <strong>107.8 m</strong>. Ignoring the datum moves the Grand-Place's centre out of the square itself (about 110 × 70 m).</li>
+  </ol></div>
+  <p>PROJ knows three ways from WGS 84 to BD72 (EPSG lists them with their accuracy: 1 m, 1 m, 5 m) and picks the best one available. A more precise way exists, through a grid of corrections (centimetres), if the grid file is installed; the Windows zip leaves grids out (§68). For OpenStreetMap, whose buildings are traced from photos to a metre or so, the 1 m Helmert is more than enough.</p>
+
+  <h3>The trap: latitude first</h3>
+  <p>For the EPSG registry, EPSG:4326's axes are <strong>latitude, then longitude</strong>. Every GIS file in the world writes longitude (x) first. Since GDAL 3, the official order is the default, and it bites:</p>
+  <div class="calc"><strong>The same two numbers, in the wrong order</strong><ol>
+    <li><code>echo "50.846777 4.352360" | cs2cs EPSG:4326 EPSG:3857</code> → 484,502.5 / 6,594,235.0: the Grand-Place.</li>
+    <li><code>echo "4.352360 50.846777" | cs2cs EPSG:4326 EPSG:3857</code> → 5,660,237.3 / 484,969.1: a point in the Indian Ocean, at latitude 4°, longitude 51°.</li>
+  </ol></div>
+  <p>No error message: just a map that is empty in the right place. render2d will ask GDAL for the "traditional GIS order" (<code>OAMS_TRADITIONAL_GIS_ORDER</code>) on every coordinate system it creates: x is always the longitude or the easting, as in the files.</p>
+
+  <h3>Do the angles turn? Meridian convergence</h3>
+  <p>A house number's rotation (<code>CARTOANGLE</code>, §36) is measured on the Lambert map. On a Mercator map, north is exactly "up" everywhere; on a Lambert map, north is up only on the central meridian, 4°22′02.952″ (4.367487°) E, and leans elsewhere by the convergence γ = n × (λ − λ₀), with n = 0.7716 for Lambert 72.</p>
+  <div class="calc"><strong>At the Grand-Place</strong><ol>
+    <li>λ − λ₀ = 4.352360° − 4.367487° = −0.015127°.</li>
+    <li>γ = 0.7716 × (−0.015127°) = <strong>−0.0117°</strong>.</li>
+    <li>Over a 20 m façade, the end moves by 20 × tan(0.0117°) = <strong>4 mm</strong>. At the edge of the Region (λ ≈ 4.25°), γ ≈ −0.09°: 3 cm over 20 m.</li>
+  </ol></div>
+  <p>Invisible: rotations read from the attributes are used as they are, without correction. It would matter for a map of the whole country in Mercator, not for Brussels.</p>
+</section>
+
+<!-- ============================================================== -->
+<section id="reproject">
+  <h2>70. Reprojecting on the fly: the design</h2>
+  <p>"On the fly": the files are not converted. Each layer stays in its own system; render2d converts the coordinates it reads, at each image, as QGIS does. The map has one system; each layer, its own.</p>
+
+  <h3>The map's system</h3>
+  <ul>
+    <li>Given by <code>--crs EPSG:3857</code>, or <code>crs: EPSG:3857</code> in the <code>viewer.yaml</code> (§57). Without it: the first layer's system, as today. <code>--bbox</code> and <code>start.bbox</code> are in the map's system.</li>
+    <li>It must be <strong>projected</strong> (metres). A map in EPSG:4326 is refused, with a message suggesting 3857 or a UTM zone: on a map in degrees, "0.5 m/px" and the scale lose their meaning (§7), and Brussels would be stretched 1.58 times in width.</li>
+    <li>A layer without a declared system (a shapefile without its <code>.prj</code>) is assumed to be in the map's system, with a warning, as today.</li>
+    <li>Without <code>--crs</code>, if the first layer is in degrees (an OSM extract alone), the map takes <strong>EPSG:3857</strong>, and says so: drawing works at once, and <code>--crs EPSG:31370</code> chooses Lambert.</li>
+  </ul>
+
+  <h3>A trap of GeoJSON: degrees by default</h3>
+  <p>The GeoJSON standard (RFC 7946) says: no <code>"crs"</code> member means longitude and latitude, WGS 84. GDAL follows it and declares EPSG:4326 for every GeoJSON without <code>"crs"</code>, even a small file typed by hand in Lambert metres. Such a layer would be "converted" from 150,000 degrees and land nowhere.</p>
+  <div class="calc"><strong>How render2d tells</strong><ol>
+    <li>Degrees stay within −360 to 360 in x (longitude, with some margin) and −90 to 90 in y (latitude).</li>
+    <li>A layer declared in degrees whose extent goes beyond, x = 148,845 for instance, is not believed: it is assumed to be in the map's system, and the warning says why ("declared in degrees … but its coordinates are not").</li>
+  </ol></div>
+
+  <h3>One conversion per layer, prepared once</h3>
+  <p>When a layer is opened (or the map's system changes), render2d compares its system with the map's (<code>IsSame</code>). The same: nothing to do, and the image is the same to the byte (the characterization test of §49 must still pass). Different: a conversion is prepared once, kept with the layer (<code>OGRCoordinateTransformation</code>), and the report says which way PROJ chose:</p>
+<pre>  b4326                     102 read      102 drawn       3.4 ms  (read 1.0 ms, draw 2.3 ms, 1 pass)
+      reprojected EPSG:4326 -> EPSG:31370 by Inverse of BD72 to WGS 84 (3) + Belgian Lambert 72 (1 m)</pre>
+  <p class="muted">102 test buildings, converted to degrees and drawn back on a Lambert map: the image differs from the original only by the anti-aliasing of some edges (at most 3 % of a pixel's intensity).</p>
+  <p>(GDAL does not tell which way it takes: render2d asks PROJ directly, by converting the centre of the layer's extent once and reading the operation used for it.)</p>
+  <p>A conversion is not shared between threads: each <code>Map</code> (render thread, question thread, §46) has its own, as it has its own open files.</p>
+
+  <h3>An image, step by step</h3>
+  <div class="calc"><strong>A Lambert view of the Grand-Place, an OSM layer in EPSG:4326</strong><ol>
+    <li>The view, in the map's system: x from 148,600 to 149,100, y from 170,500 to 170,900 (500 × 400 m).</li>
+    <li><strong>The spatial filter</strong> (§18) must be asked in the layer's system. The rectangle's four corners are not enough: a straight edge in Lambert is slightly curved in degrees. GDAL converts 21 points per edge and takes the rectangle around them (<code>OCTTransformBounds</code>): about 4.3489° to 4.3560° E, 50.8449° to 50.8485° N. A little margin is added (one pixel) so that nothing at the edge is lost.</li>
+    <li>GDAL returns the features touching that rectangle, in degrees.</li>
+    <li>Each geometry is converted, all its vertices in one call (<code>Transform</code> on the arrays of x and y), into Lambert metres. From there on, nothing changes: world → pixel (§3), styles, labels.</li>
+    <li>A vertex that cannot be converted (outside the system's domain: an OSM feature in Japan on a Belgian map) drops its feature, counted in the report: "12 features outside the map's system".</li>
+  </ol></div>
+  <p>Questions (§50 to §56, §64) follow the same path: the point or the area is in the map's system, its surrounding rectangle is converted for the filter, the features are converted to the map's system, and the exact test is the one already written. The same code to draw and to query (§51), still. "Zoom to layer" converts the layer's extent the same way.</p>
+
+  <h3>What it costs</h3>
+  <div class="calc"><strong>Measured with GDAL 3.8 on the container that writes these notes: 1,000,000 points</strong><ol>
+    <li>EPSG:4326 → EPSG:3857 (pure arithmetic): <strong>169 ms</strong>, 0.17 µs per point.</li>
+    <li>EPSG:4326 → EPSG:31370 (Helmert, then the cone): <strong>460 ms</strong>, 0.46 µs per point.</li>
+    <li>A 1 km² view of the UrbIS buildings: 1,530 buildings (§67) of about 10 vertices, 15,300 points × 0.46 µs ≈ <strong>7 ms</strong>. Next to reading and drawing, small.</li>
+    <li>The whole Region, 247,625 buildings, 2.5 million points: about <strong>1.1 s</strong> more. At that scale, the buildings are not drawn (their style starts at 1:15,000): the question does not arise. To be measured again on the real machine.</li>
+  </ol></div>
+
+  <h3>The scale of a Mercator map</h3>
+  <p>The scale (§7) is computed from the map's units, as GeoServer does. On a 3857 map those are Mercator metres:</p>
+  <div class="calc"><strong>The same view of Brussels, 0.5 ground metres per pixel</strong><ol>
+    <li>On a Lambert map: 0.5 ÷ 0.00028 = <strong>1:1,786</strong>.</li>
+    <li>On a 3857 map: 0.5 × 1.584 = 0.792 Mercator m/px; 0.792 ÷ 0.00028 = <strong>1:2,828</strong>.</li>
+    <li>A rule "up to 1:2,500" (house numbers) draws them on the Lambert map and not on the Mercator one. That is the convention of every server; a style written for Lambert at Brussels' latitude can be adjusted by multiplying its ranges by 1.584. Noted, not corrected.</li>
+  </ol></div>
+
+  <h3>Two sub-steps</h3>
+  <ul>
+    <li><strong>4b-1 (0.4.5) ✓: vectors.</strong> <code>--crs</code>, the <code>crs:</code> key, the conversion per layer, the filter in the layer's system, questions and extents, the report. Tests: the Grand-Place numbers above (Mercator to the millimetre, Lambert to the decimetre: the way PROJ chooses may change with its version), the axis order, a layer drawn identically when nothing needs converting.</li>
+    <li><strong>4b-2 (0.4.6): rasters.</strong> An image cannot be converted vertex by vertex: each pixel of the view must be looked for in the file (<em>warping</em>). GDAL does it (<code>GDALWarp</code>, from the view's window, using the overviews, §65), into an image of exactly the view's size, which is then laid down as today (§66). That opens the way to OpenStreetMap's tiles (§71).</li>
+  </ul>
+  <p>editor2d follows: the project's <code>crs:</code> key, the status bar's coordinates in the map's system, and a "Map system" choice in the View menu.</p>
+</section>
+
+<!-- ============================================================== -->
+<section id="osm">
+  <h2>71. Testing with OpenStreetMap</h2>
+  <p>OpenStreetMap is the ideal test: the same city as UrbIS, drawn independently, in other systems. If the two maps fall on top of each other, the reprojection is right; if they are 108 m apart, the datum was forgotten (§69).</p>
+
+  <h3>4b-1: OSM vectors on the Lambert map</h3>
+  <ul>
+    <li>Data: Geofabrik's extract for Belgium in shapefiles (<code>belgium-latest-free.shp.zip</code>), in EPSG:4326. Among others <code>gis_osm_buildings_a_free_1.shp</code> (buildings), <code>gis_osm_roads_free_1.shp</code> (roads). License ODbL: "© OpenStreetMap contributors" on every image shown.</li>
+    <li>Geofabrik also gives a GeoPackage (<code>belgium.gpkg</code>, layers <code>gis_osm_buildings_a_free</code>, <code>gis_osm_roads_free</code>…): with its spatial index, render2d reads it whole, no cutting needed. To keep only the Region: <code>ogr2ogr -spat 4.23 50.75 4.50 50.93 osm-brussels.gpkg belgium.gpkg gis_osm_buildings_a_free gis_osm_roads_free</code>. Careful: <code>ogr2ogr</code> takes the <em>destination first</em>, then the source; the -spat rectangle is in the source's system, degrees.</li>
+    <li>Test 1: UrbIS buildings (Lambert) in brown, OSM buildings (degrees) as a red outline, Lambert map, at 1:500 on the Grand-Place. Expected: the outlines follow the UrbIS buildings to within a metre or two.</li>
+    <li>Test 2: the same with <code>--crs EPSG:3857</code>. Now UrbIS is converted, OSM too. Same picture, scale 1.584 times larger in the report.</li>
+    <li>Test 3: the questions. <code>--at</code> on a building in both systems gives the same feature.</li>
+  </ul>
+
+  <div class="demo">
+  <h3 style="margin-top:0">The first real test: UrbIS and OpenStreetMap on the Grand-Place <span class="tag">29 October 2026</span></h3>
+  <p>Two independent files, two coordinate systems: UrbIS's buildings in Lambert 72 (a shapefile, brown), OpenStreetMap's in degrees (Geofabrik's GeoPackage, a red outline only). render2d converts OSM on the fly and lays one on the other.</p>
+  <img src="img/grand-place-osm-urbis.png" alt="The Grand-Place in Brussels: UrbIS buildings in brown, OpenStreetMap buildings outlined in red on top of them" style="width:100%;height:auto;border:1px solid var(--line);border-radius:6px;background:#fff">
+  <p class="muted" style="margin-top:4px">500 × 400 m around the Grand-Place, 1:1,488 (0.42 m per pixel). Buildings: UrbIS © Brussels Region; © OpenStreetMap contributors (ODbL).</p>
+<pre>render2d UrbISBuildings_04000_Buildings.shp --style styles/batiments.yaml \
+         "osm-brussels.gpkg::gis_osm_buildings_a_free" --style styles/osm-outline.yaml \
+         --bbox 148600 170500 149100 170900 --size 1200 -o grand-place.png
+
+map: EPSG:31370 (BD72 / Belgian Lambert 72), 1200x960 px, 0.417 m/px, scale 1:1488
+  UrbISBuildings_04000_Buildings      913 read      913 drawn      27.5 ms  (read 5.9 ms, draw 21.7 ms, 1 pass)
+  gis_osm_buildings_a_free            950 read      950 drawn      20.3 ms  (read 4.1 ms, draw 16.2 ms, 1 pass)
+      reprojected WGS 84 (CRS84) -> EPSG:31370 by Inverse of BD72 to WGS 84 (3) + Belgian Lambert 72 (1 m)</pre>
+  <div class="calc"><strong>What the picture proves</strong><ol>
+    <li><strong>The datum is right.</strong> Forgotten, it would shift all the red by 107.8 m (§69): 107.8 ÷ 0.417 = <strong>259 pixels</strong>, a whole block. The red falls on the brown to the pixel, that is to less than 42 cm.</li>
+    <li><strong>The axis order is right.</strong> Swapped, OSM would be in the Indian Ocean (§69), and the filter would have found nothing: 950 buildings read.</li>
+    <li><strong>The filter's rectangle is right.</strong> 950 buildings of the view out of the hundreds of thousands of the Region, and none missing at the edges.</li>
+    <li><strong>The conversion costs nothing.</strong> 950 buildings read <em>and</em> converted in 4.1 ms; UrbIS, read without conversion, 5.9 ms. As estimated in §70: about 10,000 vertices × 0.46 µs ≈ 4 ms.</li>
+  </ol></div>
+  <p>That it fits so well is no coincidence: the Brussels buildings of OpenStreetMap were in large part imported from UrbIS. The data come back home after a trip through WGS 84. Where they differ (a thin grey line, a small white gap), OSM was edited since, or did not follow an UrbIS update: <strong>a quality check of either map, at a glance</strong>, for those who maintain them.</p>
+
+  <h3>The other lesson: the spatial index</h3>
+  <p>The first try read Geofabrik's <code>belgium.gpkg</code> directly. The same view, the same 965 buildings:</p>
+  <div class="calc"><ol>
+    <li><code>belgium.gpkg</code>, as downloaded: read in <strong>1,021 ms</strong>. The file has no spatial index (no <code>gpkg_extensions</code> table, so no <code>gpkg_rtree_index</code>): for each view, GDAL goes through every building of Belgium and tests its rectangle (§18).</li>
+    <li><code>osm-brussels.gpkg</code>, cut with <code>ogr2ogr</code>, which creates the index by default: <strong>4.5 ms</strong>.</li>
+    <li>1,021 ÷ 4.5 ≈ <strong>227 times</strong> faster, for exactly the same buildings. At every image, every pan, every zoom.</li>
+  </ol></div>
+  <p>A downloaded GeoPackage does not always carry its index. To check: <code>ogrinfo file.gpkg -sql "SELECT table_name FROM gpkg_extensions WHERE extension_name = 'gpkg_rtree_index'"</code>. To add it in place: <code>ogrinfo file.gpkg -sql "SELECT CreateSpatialIndex('layer', 'geom')"</code>. Or, as here, cut out the area of interest with <code>ogr2ogr</code>: smaller, and indexed.</p>
+  </div>
+
+  <h3>4b-2: OSM tiles under the map</h3>
+  <p>GDAL reads a tile server as one immense raster, described by a small XML file (its "WMS" driver, in TMS mode). For render2d, it is a layer like a GeoTIFF: once warping exists, it costs nothing more.</p>
+<pre>&lt;GDAL_WMS&gt;
+  &lt;Service name="TMS"&gt;&lt;ServerUrl&gt;https://tile.openstreetmap.org/${z}/${x}/${y}.png&lt;/ServerUrl&gt;&lt;/Service&gt;
+  &lt;DataWindow&gt;
+    &lt;UpperLeftX&gt;-20037508.34&lt;/UpperLeftX&gt;&lt;UpperLeftY&gt;20037508.34&lt;/UpperLeftY&gt;
+    &lt;LowerRightX&gt;20037508.34&lt;/LowerRightX&gt;&lt;LowerRightY&gt;-20037508.34&lt;/LowerRightY&gt;
+    &lt;TileLevel&gt;19&lt;/TileLevel&gt;&lt;TileCountX&gt;1&lt;/TileCountX&gt;&lt;TileCountY&gt;1&lt;/TileCountY&gt;&lt;YOrigin&gt;top&lt;/YOrigin&gt;
+  &lt;/DataWindow&gt;
+  &lt;Projection&gt;EPSG:3857&lt;/Projection&gt;
+  &lt;BlockSizeX&gt;256&lt;/BlockSizeX&gt;&lt;BlockSizeY&gt;256&lt;/BlockSizeY&gt;&lt;BandsCount&gt;3&lt;/BandsCount&gt;
+  &lt;UserAgent&gt;render2d (+https://github.com/nfr25/render2d)&lt;/UserAgent&gt;
+  &lt;Cache&gt;&lt;Path&gt;cache/osm-tiles&lt;/Path&gt;&lt;/Cache&gt;
+&lt;/GDAL_WMS&gt;</pre>
+  <div class="calc"><strong>How many tiles for a 1,200 × 900 Lambert view at 0.5 m/px?</strong><ol>
+    <li>In Mercator metres: 0.5 × 1.584 = 0.792 per pixel.</li>
+    <li>A tile's pixel at zoom z: 156,543.03 ÷ 2<sup>z</sup> Mercator metres. z = 17: 1.194; z = 18: <strong>0.597</strong>. GDAL takes the first level at least as fine as the view: 18.</li>
+    <li>A z18 tile covers 256 × 0.597 = 152.9 Mercator metres. The view: 1,200 × 0.792 = 950 by 900 × 0.792 = 713. 950 ÷ 152.9 = 6.2, i.e. 7 or 8 tiles wide; 713 ÷ 152.9 = 4.7, i.e. 5 or 6 high: <strong>35 to 48 tiles</strong> the first time, none the next (the cache).</li>
+  </ol></div>
+  <p>OpenStreetMap's servers are run by volunteers, and their usage policy is strict: an application that identifies itself (the <code>UserAgent</code> above), tiles kept in a cache, no bulk downloading (no tiles2d pyramid of the Region from their server), and the attribution on the map. For a viewer used by one person, it is exactly the intended use; for more, a tile provider or one's own server.</p>
+</section>
+
+<!-- ============================================================== -->
 <section id="refs">
-  <h2>69. References</h2>
+  <h2>72. References</h2>
   <h3>Books</h3>
   <ul class="refs">
     <li><strong>Adobe Systems, <em>PostScript Language Reference Manual</em></strong> (the "red book"), 3<sup>rd</sup> ed., 1999. The origin of the path / fill / stroke model, of the even-odd and non-zero rules, of <code>gsave</code>/<code>grestore</code>. Chapters 10 and 11.</li>
@@ -2691,12 +2880,18 @@ PROJ data: C:\Tools\render2d-0.4.4-windows-x64\share\proj (beside the executable
     <li><strong>Joseph O'Rourke, <em>Computational Geometry in C</em></strong>, chapter 1: the signed area of a triangle and the "left of" test; chapter 7: the intersection of two segments, edge cases included. Chapter 55.</li>
     <li><strong>OGC, <em>Simple Feature Access — Part 1: Common Architecture</em></strong> (06-103r4), 2011, § 6.1.15: the <code>Intersects</code>, <code>Within</code>, <code>Contains</code> relations, and WKT. Chapters 54 and 56.</li>
     <li><strong>David Goldberg, "What Every Computer Scientist Should Know About Floating-Point Arithmetic"</strong>, ACM Computing Surveys, 1991. The reference on the ulp and floating-point traps. Chapter 8.</li>
+    <li><strong>IOGP, <em>Geomatics Guidance Note 7-2: Coordinate Conversions and Transformations including Formulas</em></strong>. Lambert Conic Conformal (2SP), Mercator and Popular Visualisation Pseudo-Mercator (Web Mercator), the Helmert transformation, with worked examples. Chapter 69.</li>
+    <li><strong>EPSG Geodetic Parameter Dataset</strong> — epsg.org. EPSG:31370, 4326, 3857, the transformations "BD72 to WGS 84 (1) to (3)" and their accuracies. Chapter 69.</li>
+    <li><strong>PROJ, documentation</strong> — proj.org: <code>cs2cs</code>, <code>projinfo</code>, how an operation is chosen, grids and the network. Chapters 69 and 70.</li>
+    <li><strong>GDAL, RFC 73 "Integration of PROJ6 for WKT2, late binding capabilities, time-dependent coordinates, and improved CRS-awareness"</strong> — gdal.org. The axis order since GDAL 3 and <code>OAMS_TRADITIONAL_GIS_ORDER</code>. Chapter 69.</li>
+    <li><strong>GDAL, <code>OGRCoordinateTransformation</code>, <code>OCTTransformBounds</code>, the warper (<code>GDALWarp</code>) and the WMS driver (TMS mode)</strong> — gdal.org. Chapters 70 and 71.</li>
+    <li><strong>OpenStreetMap Foundation, Tile Usage Policy</strong> — operations.osmfoundation.org/policies/tiles. And Geofabrik's extracts, download.geofabrik.de. Chapter 71.</li>
   </ul>
 </section>
 
 <!-- ============================================================== -->
 <section id="road">
-  <h2>70. Roadmap</h2>
+  <h2>73. Roadmap</h2>
   <ol class="road">
     <li>Step 1 — Matrix, canvas, Cairo surface: test shapes in PNG, SVG and PDF. ✓</li>
     <li>Step 2 — GDAL/OGR reading: drawing a real layer with a fixed style. ✓</li>
@@ -2715,7 +2910,7 @@ PROJ data: C:\Tools\render2d-0.4.4-windows-x64\share\proj (beside the executable
     <li>Step 3n ✓ — Classifying on the command line (§63): <code>--categorize</code>, <code>--graduate</code>, <code>--write-style</code>; <code>classify()</code>, the same function for editor2d and render2d.</li>
     <li>Step 3o ✓ — Selecting by attributes (§64): <code>Map::queryWhere</code>, <code>GdalLayer::forFids</code>, <code>--where</code>. Client: editor2d's selection by expression (4a).</li>
     <li>Step 4a ✓ — Rasters (§65, §66): reading the view's window with its overviews, bands into ARGB32, transparent nodata, the <code>raster</code> symbolizer and its opacity. Same coordinate system as the map. Client: editor2d's raster layers.</li>
-    <li class="now">Step 4b — On-the-fly reprojection (PROJ), for vectors and rasters.</li>
+    <li class="now">Step 4b — On-the-fly reprojection (PROJ), §69 to §71: 4b-1 (0.4.5) vectors, <code>--crs</code>, the conversion per layer; 4b-2 (0.4.6) rasters by warping, then OpenStreetMap's tiles. Tested on OpenStreetMap against UrbIS.</li>
     <li>Later, after reprojection and PostGIS, once editor2d and viewer2d are rich enough: <strong>render2d as a server</strong>, a program that stays up with its map open and answers over HTTP (<code>/map</code>, <code>/tiles/z/x/y</code>, <code>/query</code>, <code>/legend</code>, a style changed live) and as a <strong>standard WMS</strong>, readable by QGIS and any GIS client. The favoured option: <code>render2d --serve</code>, a process that stays up with its map open and talks through a pipe (stdin/stdout), one JSON line per request and per answer, the image as bytes right after, with the vocabulary of editor2d's commands (<code>map.render</code>, <code>layer.add</code>…). In front of it, FastAPI (or viewer2d) keeps a small pool of these processes: a GDAL crash kills only one, they draw in parallel. The other paths stay open: an HTTP server in C++ inside render2d, or render2d as a Python module (pybind11) if every millisecond counts. Then, real time: telling the server an area has changed, redrawing, invalidating the tiles.</li>
     <li>For the map built in editor2d (its notes, §31 to §34): describing the format itself (properties, types, default values, geometries concerned) for the legend dialog and the future API; reading a field's distinct values, minimum and maximum.</li>
     <li>Alongside, in a separate project: <strong>the test viewer <code>viewer2d</code></strong> (NiceGUI + Leaflet, in Lambert 72), which calls <code>render2d</code> on the command line at every map move. ✓</li>
@@ -2725,7 +2920,7 @@ PROJ data: C:\Tools\render2d-0.4.4-windows-x64\share\proj (beside the executable
     <li>Step 7 — Vector tiles (MVT): the same reading, clipping and simplification steps, an MVT encoder next to the canvas, and the translation of YSLD into a MapLibre style.</li>
   </ol>
   <p class="muted">The "style" and "reprojection" steps were swapped after the first rendering of Brussels: all the test data are in Lambert 72, and the most visible need was style (outlines wider than the buildings at small scale).</p>
-  <p class="muted">Versions follow this roadmap: <code>0.&lt;step&gt;.&lt;sub-step&gt;</code>, so 0.3.4 for step 3d, 0.3.5 for step 3e, 0.3.6 for step 3f, 0.3.7 for step 3g, 0.3.8 for step 3h, 0.3.9 for step 3i, 0.3.10 for step 3j, 0.3.11 for step 3k, 0.3.12 for step 3l, 0.3.13 for step 3m, 0.3.14 for step 3n (0.3.15: scale bands; 0.3.16: reclassifying), 0.3.17 for step 3o, 0.4.0 for step 4a (0.4.1: <code>listLayers</code>; 0.4.2: the session password; 0.4.3: tables without geometry; for editor2d; 0.4.4: the data beside the executable, for the Windows zip, §68). <code>render2d --version</code> shows it, with the build date and the GDAL and Cairo versions, and the report starts with it: a forgotten executable is spotted immediately.</p>
+  <p class="muted">Versions follow this roadmap: <code>0.&lt;step&gt;.&lt;sub-step&gt;</code>, so 0.3.4 for step 3d, 0.3.5 for step 3e, 0.3.6 for step 3f, 0.3.7 for step 3g, 0.3.8 for step 3h, 0.3.9 for step 3i, 0.3.10 for step 3j, 0.3.11 for step 3k, 0.3.12 for step 3l, 0.3.13 for step 3m, 0.3.14 for step 3n (0.3.15: scale bands; 0.3.16: reclassifying), 0.3.17 for step 3o, 0.4.0 for step 4a (0.4.1: <code>listLayers</code>; 0.4.2: the session password; 0.4.3: tables without geometry; for editor2d; 0.4.4: the data beside the executable, for the Windows zip, §68), 0.4.5 for step 4b-1 (vectors reprojected, §70). <code>render2d --version</code> shows it, with the build date and the GDAL and Cairo versions, and the report starts with it: a forgotten executable is spotted immediately.</p>
   <p class="muted">Desirable, without a date: label collisions and labels straddling tile edges.</p>
   <p class="muted">Then: <code>profile</code> and <code>autostyle</code>, then a custom engine (AGG or Blend2D) behind the same canvas.</p>
 </section>

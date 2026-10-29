@@ -20,6 +20,7 @@ render2d/regress/
 check-logs/
 commandes-nfr.md
 quix.bat
+tools/qix.bat
 #vscode
 .vscode
  

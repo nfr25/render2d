@@ -308,13 +308,13 @@ symbolizers:
     }
 }
 
-// §66: another CRS is refused (step 4b); none is assumed to be the map's.
+// §66: another CRS is refused (until step 4b-2); none is assumed to be the map's.
 void testCrs(const std::string& board) {
     const std::string utm = writeBoard("r2d_raster_utm.tif", "EPSG:32631");
     Map map = Map::open({{board, {}}, {utm, {}}, {writeDsm(true), {}}});
     CHECK(map.layerCount() == 3);
     CHECK(map.crs().epsg == 31370);
-    CHECK(anyWarning(map.warnings(), "a raster is not drawn without reprojection"));
+    CHECK(anyWarning(map.warnings(), "a raster is not reprojected yet"));
     CHECK(anyWarning(map.warnings(), "r2d_raster_dsm: no CRS declared"));
     std::string error;
     auto img = CairoImage::create(ImageSize{4, 4}, error);

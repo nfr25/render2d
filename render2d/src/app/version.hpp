@@ -6,7 +6,7 @@
 
 namespace r2d {
 
-inline constexpr const char* kVersion = "0.4.4";
-inline constexpr const char* kVersionStep = "step 4a (0.4.4: GDAL and PROJ data beside the executable)";
+inline constexpr const char* kVersion = "0.4.5";
+inline constexpr const char* kVersionStep = "step 4b-1 (0.4.5: vector layers reprojected on the fly)";
 
 } // namespace r2d

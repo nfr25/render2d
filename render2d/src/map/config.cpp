@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "map/config.hpp"
 
+#include "backend/gdal/gdal_reproject.hpp"   // crsFromUser (§70)
+
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
@@ -44,7 +46,7 @@ void unknownKeys(const YAML::Node& node, const std::set<std::string>& known, con
 }
 
 // The keys we read and write; any other key of an existing file is kept.
-const std::set<std::string> kOurKeys = {"layers", "start"};
+const std::set<std::string> kOurKeys = {"crs", "layers", "start"};
 
 // One path component against another: on Windows "Cartes" is "cartes".
 bool samePart(const std::string& a, const std::string& b) {
@@ -104,6 +106,7 @@ std::string configText(const Config& config, const std::string& path) {
     const std::string folder = fs::absolute(fs::path(path)).parent_path().generic_string();
     std::ostringstream o;
     o << "# Written by render2d's writeConfig (notions §61). Paths are relative to this file.\n";
+    if (!config.crs.empty()) o << "crs: " << quoted(config.crs) << "\n";   // §70
     o << "layers:\n";
     for (const LayerSpec& l : config.layers) {
         o << "  - source: " << quoted(relativeToFolder(l.source, folder)) << "\n";
@@ -161,9 +164,23 @@ ConfigResult loadConfig(const std::string& path) {
         return result;
     }
     // viewer2d's own keys are not ours, but they are not mistakes either.
-    unknownKeys(root, {"layers", "start", "render2d", "max_parallel", "tiles", "metatile"}, path + ": ", result.warnings);
+    unknownKeys(root, {"crs", "layers", "start", "render2d", "max_parallel", "tiles", "metatile"}, path + ": ", result.warnings);
 
     const fs::path folder = fs::absolute(fs::path(path)).parent_path();
+
+    // crs: the map's system (§70), optional. Checked now: a typo stops here.
+    if (const YAML::Node crs = root["crs"]) {
+        std::string error;
+        try {
+            result.config.crs = crs.as<std::string>();
+        } catch (const YAML::Exception&) {
+            result.config.crs.clear();
+        }
+        if (result.config.crs.empty() || !crsFromUser(result.config.crs, error)) {
+            result.error = path + ": crs: " + (error.empty() ? std::string("a text expected (EPSG:3857...)") : error);
+            return result;
+        }
+    }
 
     // layers: [{source, style?, visible?, title?}, ...]
     const YAML::Node layers = root["layers"];

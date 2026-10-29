@@ -39,6 +39,7 @@ struct LayerSpec {
 struct LayerReport {
     std::string      name;
     LayerRenderStats stats;              // renderLayer's numbers, unchanged
+    std::string      reprojection;       // §70: "EPSG:4326 -> EPSG:31370 by ...", or "" (none needed)
 };
 
 // What one render did. reportLines() turns it into text. §47.
@@ -80,12 +81,17 @@ class Map {
 public:
     // Never fails: a layer or a style that cannot be read becomes a warning.
     // With no layer at all, empty() is true and warnings() says why.
-    static Map open(const std::vector<LayerSpec>& specs, double pixelRatio = 1.0);
+    // `crs`: the map's coordinate system (§70, crsFromUser); without it, the
+    // first layer's (EPSG:3857 if that one is in degrees). Every layer in
+    // another system is converted to it as it is read.
+    static Map open(const std::vector<LayerSpec>& specs, double pixelRatio = 1.0,
+                    const std::optional<CrsInfo>& crs = std::nullopt);
 
     // A map that changes (§58). addLayer opens the layer now and puts it at
     // `at` (0 = bottom; -1 or beyond the end = on top). Its warnings (missing
-    // file, bad style, another CRS) go to `warnings`; false if it could not be
-    // opened, and the map is unchanged.
+    // file, bad style, no CRS) go to `warnings`; false if it could not be
+    // opened, and the map is unchanged. The first layer with a CRS gives the
+    // map its own, unless one was given (§70).
     bool addLayer(const LayerSpec& spec, int at, std::vector<std::string>& warnings);
     void removeLayer(int i);
     void moveLayer(int from, int to);   // the layer at `from` ends at `to`
@@ -101,11 +107,17 @@ public:
 
     bool                            empty() const { return layers_.empty(); }
     const std::vector<std::string>& warnings() const { return warnings_; }   // found while opening
-    const CrsInfo&                  crs() const;                              // the first declared one
-    std::optional<Envelope>         extent() const;                           // all layers, visible or not
+    const CrsInfo&                  crs() const { return crs_; }              // §70: given, or the first declared one
+    std::optional<Envelope>         extent() const;                           // all layers, visible or not, in the map's CRS
+
+    // §70: another system for the map; every layer is converted to it from
+    // now on. What could not be (no known way) goes to `warnings`.
+    void setCrs(const CrsInfo& crs, std::vector<std::string>& warnings);
 
     int              layerCount() const { return static_cast<int>(layers_.size()); }
-    const LayerInfo& layerInfo(int i) const;
+    const LayerInfo& layerInfo(int i) const;        // as the source says it: extent in ITS CRS
+    std::optional<Envelope> layerExtent(int i) const;   // §70: the extent in the map's CRS (Zoom to layer)
+    const std::string& layerReprojection(int i) const;  // §70: "EPSG:4326 -> ... by ...", or ""
     const std::vector<FieldDef>& layerFields(int i) const;   // the columns of the query's attributes
     bool             visible(int i) const;
     void             setVisible(int i, bool on);
@@ -145,12 +157,17 @@ private:
     // One way to open a layer, for open() and addLayer() (§58). nullptr if
     // the source cannot be opened (the reason in `warnings`).
     std::unique_ptr<Layer> openLayer(const LayerSpec& spec, int colour, std::vector<std::string>& warnings) const;
-    // "name: CRS ... differs from the map CRS ...", or nothing.
-    std::optional<std::string> crsWarning(const Layer& layer) const;
+    // §70: the layer seen in the map's CRS: a conversion when its own
+    // differs, nothing when it is the same. What cannot be done: `warnings`.
+    void bindLayer(Layer& layer, std::vector<std::string>& warnings) const;
+    // §70: the map's CRS from a layer when none was given; true if it was set.
+    bool takeCrsFrom(const Layer& layer, std::vector<std::string>& warnings);
 
     std::vector<std::unique_ptr<Layer>> layers_;
     std::vector<std::string>            warnings_;
     double                              pixelRatio_ = 1.0;
+    CrsInfo                             crs_;               // §70: the map's system
+    bool                                crsGiven_ = false;  // by --crs / crs: (else from the first layer)
 };
 
 } // namespace r2d

@@ -21,6 +21,9 @@ struct CrsInfo {
     bool        known = false;   // the source declares a CRS
     std::string name;            // e.g. "BD72 / Belgian Lambert 72"
     int         epsg  = 0;       // 0 when not identified
+    std::string code;            // "EPSG:31370", "OGC:CRS84" (§71: Geofabrik's GeoPackage): its authority's name for it
+    bool        geographic = false;   // degrees (EPSG:4326...), not metres (§69)
+    std::string wkt;             // the full definition (WKT2), for a conversion (§70)
 };
 
 struct LayerInfo {

@@ -131,6 +131,7 @@ std::string utf8(const std::filesystem::path& p) {
 
 std::string g_gdalData = "built-in default";   // for gdalDataInfo()
 std::string g_projData = "built-in default";
+std::string g_projDir;                         // the folder alone, when chosen here (§70: PROJ's own context)
 
 // notions §68: a render2d unzipped anywhere finds its reference files in
 // share/gdal and share/proj beside the executable. An environment variable
@@ -156,6 +157,7 @@ void findDataBesideExecutable() {
         const char* paths[] = {dir.c_str(), nullptr};
         OSRSetPROJSearchPaths(paths);
         g_projData = dir + " (beside the executable)";
+        g_projDir  = dir;
     }
 }
 
@@ -170,6 +172,11 @@ void gdalInit() {
     });
 }
 
+const std::string& projDataFolder() {
+    gdalInit();
+    return g_projDir;
+}
+
 std::vector<std::string> gdalDataInfo() {
     gdalInit();
     return {"GDAL data: " + g_gdalData, "PROJ data: " + g_projData};
@@ -180,17 +187,28 @@ CrsInfo crsInfo(const OGRSpatialReference* srs) {
     if (srs == nullptr) return c;
     c.known = true;
     if (const char* n = srs->GetName()) c.name = n;
+    c.geographic = srs->IsGeographic();
+    // §70: the full definition, so that the map can build a conversion
+    // without GDAL headers. WKT2: the most complete form.
+    char* wkt = nullptr;
+    const char* options[] = {"FORMAT=WKT2_2019", nullptr};
+    if (srs->exportToWkt(&wkt, options) == OGRERR_NONE && wkt) c.wkt = wkt;
+    CPLFree(wkt);
 
     // Declared EPSG code, or a guess from the definition (common for .prj files).
     const char* auth = srs->GetAuthorityName(nullptr);
     const char* code = srs->GetAuthorityCode(nullptr);
+    if (auth && code) c.code = std::string(auth) + ":" + code;
     if (auth && code && std::string(auth) == "EPSG") {
         c.epsg = std::atoi(code);
     } else {
         OGRSpatialReference copy(*srs);
         if (copy.AutoIdentifyEPSG() == OGRERR_NONE) {
             const char* guessed = copy.GetAuthorityCode(nullptr);
-            if (guessed) c.epsg = std::atoi(guessed);
+            if (guessed) {
+                c.epsg = std::atoi(guessed);
+                c.code = std::string("EPSG:") + guessed;
+            }
         }
     }
     return c;

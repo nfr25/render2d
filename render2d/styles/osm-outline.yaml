@@ -1,0 +1,8 @@
+# OpenStreetMap buildings as a red outline only, to lay over UrbIS (notions §71).
+name: osm-outline
+feature-styles:
+- rules:
+  - symbolizers:
+    - polygon:
+        stroke-color: '#E00000'
+        stroke-width: 1.2

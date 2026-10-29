@@ -21,9 +21,10 @@ struct ReadStats {
     std::size_t drawn       = 0;   // converted and handed to the visitor
     std::size_t empty       = 0;   // no geometry, or an empty one
     std::size_t unsupported = 0;   // a type we do not draw (yet)
+    std::size_t outside     = 0;   // a vertex the map's CRS cannot hold (§70)
 
     ReadStats& operator+=(const ReadStats& o) {
-        read += o.read; drawn += o.drawn; empty += o.empty; unsupported += o.unsupported;
+        read += o.read; drawn += o.drawn; empty += o.empty; unsupported += o.unsupported; outside += o.outside;
         return *this;
     }
 };

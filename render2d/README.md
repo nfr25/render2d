@@ -33,7 +33,8 @@ the code follows them.
 | — | Label collisions, labels across tile borders | nice to have |
 | — | Test viewer `viewer2d` (NiceGUI + Leaflet), a separate project calling `render2d` | done |
 | 4a | Raster layers (GeoTIFF, world files): the view's window with overviews, RGB / RGBA / palette / grey, nodata, the `raster` symbolizer and its opacity | done |
-| 4b | Reprojection on the fly (PROJ) | next |
+| 4b-1 | Reprojection on the fly of vector layers (PROJ): `--crs`, `crs:` in the config, each layer converted to the map's system | done |
+| 4b-2 | Reprojection of rasters (warping), OpenStreetMap tiles | next |
 | 4c | WMS / WMTS / WFS sources | |
 | — | Clipping, simplification | |
 | 5 | Full command line, JSON warnings | |
@@ -123,7 +124,8 @@ render2d SOURCE [SOURCE ...] [options]
 | `--config FILE.yaml` | The layers (`source`, `style`, `visible`) and `start: bbox` of a viewer.yaml, such as viewer2d's. Relative paths are taken from the file's folder. viewer2d's own keys are ignored; any other key gives a warning (a typo, often). `SOURCE`s given as well are drawn on top; `--bbox` replaces `start: bbox`. The report starts with the file and every path it resolved. |
 | `SOURCE` | A file or a GDAL connection string: a vector layer, or a raster (GeoTIFF...; step 4a). `SOURCE::layer` picks a layer, otherwise the first one is used. Layers are drawn in the order given, the first at the bottom. |
 | `--style FILE.yaml` | YSLD style for the `SOURCE` just before it. Without it, a built-in style chosen from the geometry type. |
-| `--bbox XMIN YMIN XMAX YMAX` | Area to draw, in the data's coordinate system. Default: total extent of the layers. |
+| `--crs CRS` | The map's coordinate system, in metres: `EPSG:31370`, `EPSG:3857`, a UTM zone... Default: `crs:` of `--config`, else the first layer's (`EPSG:3857` if that one is in degrees). A layer in another system is converted as it is read; the report says how (notes §69 to §71). |
+| `--bbox XMIN YMIN XMAX YMAX` | Area to draw, in the map's coordinate system. Default: total extent of the layers. |
 | `--size W` or `--size WxH` | Image size. Default: 1000 wide, height following the shape of the area. If both are given and the shapes differ, the area is widened so that pixels stay square. |
 | `--background RRGGBB` or `none` | Background colour, default `FFFFFF`. `none` gives a transparent image. |
 | `--version` | Prints the version of render2d (`0.<step>.<sub-step>`: 0.3.4 is step 3d), its build date, and the versions of GDAL and Cairo. The report also starts with the version: an old executable is spotted at once. |

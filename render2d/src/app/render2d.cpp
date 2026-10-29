@@ -19,6 +19,7 @@
 #include "app/version.hpp"
 #include "backend/cairo/cairo_target.hpp"
 #include "backend/gdal/gdal_layer.hpp"
+#include "backend/gdal/gdal_reproject.hpp"   // crsFromUser (§70)
 #include "core/view.hpp"
 #include "map/config.hpp"
 #include "map/map.hpp"
@@ -43,7 +44,10 @@ const char* kUsage =
     "                         SOURCE::layer picks a layer\n"
     "                         (default: the first one). Drawn in order, first at the bottom.\n"
     "  --style FILE.yaml      YSLD style for the SOURCE just before (default: built-in style)\n"
-    "  --bbox XMIN YMIN XMAX YMAX   area to draw (default: total extent of the layers)\n"
+    "  --crs CRS              the map's coordinate system, in metres: EPSG:31370, EPSG:3857...\n"
+    "                         (default: crs: of --config, else the first layer's; EPSG:3857 if\n"
+    "                         that one is in degrees). Layers in another are converted (§70)\n"
+    "  --bbox XMIN YMIN XMAX YMAX   area to draw, in the map's CRS (default: all the layers)\n"
     "  --size W[xH]           image size (default: 1000 wide, height from the bbox shape)\n"
     "  --background RRGGBB|none     default FFFFFF; none = transparent\n"
     "  --pixel-ratio R        the image is seen R times smaller (1.5 on a screen scaled to\n"
@@ -76,6 +80,7 @@ struct SourceSpec {
 
 struct Options {
     std::optional<std::string> config;   // --config: viewer.yaml (§57)
+    std::string              crs;        // --crs (§70)
     std::vector<SourceSpec>  sources;
     std::optional<Envelope>  bbox;
     int                      width  = 1000;
@@ -118,6 +123,9 @@ bool parseArgs(int argc, char** argv, Options& o) {
         } else if (a == "--config") {
             if (!need(1)) return false;
             o.config = argv[++i];
+        } else if (a == "--crs") {
+            if (!need(1)) return false;
+            o.crs = argv[++i];
         } else if (a == "--bbox") {
             if (!need(4)) return false;
             double v[4];
@@ -382,6 +390,7 @@ int main(int argc, char** argv) {
     // 0. A config file (§57): its layers first, those of the command line on top.
     std::vector<LayerSpec>   specs;
     std::optional<Envelope>  startBbox;
+    std::string              crsText = opt.crs;   // --crs, else the config's crs:
     std::vector<std::string> configLines;   // printed at the top of the report
     if (opt.config) {
         const ConfigResult c = loadConfig(*opt.config);
@@ -392,6 +401,7 @@ int main(int argc, char** argv) {
         for (const auto& w : c.warnings) warn(w);
         specs     = c.config.layers;
         startBbox = c.config.startBbox;
+        if (crsText.empty()) crsText = c.config.crs;
         configLines.push_back("config: " + std::filesystem::absolute(c.config.path).lexically_normal().generic_string());
     }
     for (const SourceSpec& s : opt.sources) specs.push_back({s.source, s.style});
@@ -407,7 +417,16 @@ int main(int argc, char** argv) {
 
     // 1. The map: layers opened, styles read and scaled, CRS checked (§46).
     //    Problems are warnings; only "no layer at all" stops here.
-    Map map = Map::open(specs, opt.pixelRatio);
+    std::optional<CrsInfo> crs;   // §70
+    if (!crsText.empty()) {
+        std::string error;
+        crs = crsFromUser(crsText, error);
+        if (!crs) {
+            std::fprintf(stderr, "error: --crs: %s\n", error.c_str());
+            return 2;
+        }
+    }
+    Map map = Map::open(specs, opt.pixelRatio, crs);
     for (const auto& w : map.warnings()) warn(w);
     if (map.empty()) {
         for (const auto& w : warnings) std::fprintf(stderr, "error: %s\n", w.c_str());
