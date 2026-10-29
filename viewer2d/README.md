@@ -5,6 +5,11 @@ mouse. After each move, viewer2d runs `render2d` for the visible area and shows
 the image, with render2d's report (scale, counts, timings, warnings) and the
 exact command line below the map.
 
+![viewer2d in a browser: parcels, buildings, addresses and trees in Brussels](docs/img/viewer2d.png)
+
+*viewer2d at 1:2,280: parcels, buildings, a dot per door and the street trees.
+Brussels, UrbIS data.*
+
 It is a separate project: it only knows render2d's command line, not its code.
 Version 1.2 needs **render2d 0.3.8 or later**: render2d reads `viewer.yaml`
 itself (`render2d --config viewer.yaml ...`), and viewer2d checks the version
