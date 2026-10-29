@@ -109,6 +109,8 @@ bool parseArgs(int argc, char** argv, Options& o) {
         if (a == "--version") {
             std::printf("render2d %s (%s), built %s\nGDAL %s, Cairo %s\n", kVersion, kVersionStep, __DATE__,
                         gdalVersion().c_str(), cairoVersion().c_str());
+            for (const std::string& line : gdalDataInfo())   // §68: where the reference files come from
+                std::printf("%s\n", line.c_str());
             std::exit(0);
         } else if (a == "-h" || a == "--help") {
             std::fputs(kUsage, stdout);

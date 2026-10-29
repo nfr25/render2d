@@ -2,8 +2,21 @@
 #include "backend/gdal/gdal_convert.hpp"
 
 #include <cstdlib>
+#include <filesystem>
 #include <memory>
 #include <mutex>
+#include <string>
+#include <vector>
+
+#ifdef _WIN32
+#  define WIN32_LEAN_AND_MEAN
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <windows.h>
+#else
+#  include <unistd.h>
+#endif
 
 #include <cpl_error.h>
 #include <gdal_priv.h>
@@ -93,12 +106,73 @@ ConvertResult toGeometry(const OGRGeometry* g, Geometry& out) {
 
 // Once per program: register the drivers, and keep GDAL quiet on stderr.
 // Errors are read back with CPLGetLastErrorMsg() and reported by us.
+namespace {
+
+// The folder of the running executable, or "" when unknown.
+std::filesystem::path executableFolder() {
+#ifdef _WIN32
+    std::wstring buf(32768, L'\0');
+    const DWORD n = GetModuleFileNameW(nullptr, buf.data(), static_cast<DWORD>(buf.size()));
+    if (n == 0 || n >= buf.size()) return {};
+    buf.resize(n);
+    return std::filesystem::path(buf).parent_path();
+#else
+    std::error_code ec;
+    const std::filesystem::path p = std::filesystem::read_symlink("/proc/self/exe", ec);
+    return ec ? std::filesystem::path() : p.parent_path();
+#endif
+}
+
+// A path as UTF-8 text, the form GDAL and PROJ expect on every system.
+std::string utf8(const std::filesystem::path& p) {
+    const std::u8string u = p.u8string();
+    return std::string(u.begin(), u.end());
+}
+
+std::string g_gdalData = "built-in default";   // for gdalDataInfo()
+std::string g_projData = "built-in default";
+
+// notions §68: a render2d unzipped anywhere finds its reference files in
+// share/gdal and share/proj beside the executable. An environment variable
+// set by the user wins: nothing is changed then.
+void findDataBesideExecutable() {
+    const std::filesystem::path exe = executableFolder();
+    std::error_code ec;
+
+    if (const char* env = std::getenv("GDAL_DATA"); env && *env) {
+        g_gdalData = std::string(env) + " (GDAL_DATA)";
+    } else if (!exe.empty() && std::filesystem::is_directory(exe / "share" / "gdal", ec)) {
+        const std::string dir = utf8(exe / "share" / "gdal");
+        CPLSetConfigOption("GDAL_DATA", dir.c_str());
+        g_gdalData = dir + " (beside the executable)";
+    }
+
+    const char* proj = std::getenv("PROJ_DATA");
+    if (!proj || !*proj) proj = std::getenv("PROJ_LIB");
+    if (proj && *proj) {
+        g_projData = std::string(proj) + " (PROJ_DATA)";
+    } else if (!exe.empty() && std::filesystem::exists(exe / "share" / "proj" / "proj.db", ec)) {
+        const std::string dir = utf8(exe / "share" / "proj");
+        const char* paths[] = {dir.c_str(), nullptr};
+        OSRSetPROJSearchPaths(paths);
+        g_projData = dir + " (beside the executable)";
+    }
+}
+
+} // namespace
+
 void gdalInit() {
     static std::once_flag once;
     std::call_once(once, [] {
+        findDataBesideExecutable();
         GDALAllRegister();
         CPLSetErrorHandler(CPLQuietErrorHandler);
     });
+}
+
+std::vector<std::string> gdalDataInfo() {
+    gdalInit();
+    return {"GDAL data: " + g_gdalData, "PROJ data: " + g_projData};
 }
 
 CrsInfo crsInfo(const OGRSpatialReference* srs) {

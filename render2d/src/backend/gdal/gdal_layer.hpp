@@ -39,6 +39,13 @@ struct LayerInfo {
 // "3.13.2": for --version (the rest of the program does not include GDAL).
 std::string gdalVersion();
 
+// Where GDAL's and PROJ's reference files are read from (notions §68):
+// "GDAL data: <folder> (beside the executable)", the same for PROJ; one line
+// each, for --version. A distributed render2d carries them in share/gdal and
+// share/proj next to the executable; an environment variable (GDAL_DATA,
+// PROJ_DATA or PROJ_LIB) still wins.
+std::vector<std::string> gdalDataInfo();
+
 // A zone written in WKT (§56): "POLYGON((x y, x y, ...))", read by GDAL. The
 // outer ring only; false and a message for anything else.
 bool zoneFromWkt(const std::string& wkt, std::vector<Point>& ring, std::string& error);

@@ -9,22 +9,6 @@ The design notes, with the maths worked out step by step, are in
 [`docs/notions.en.html`](docs/notions.en.html). They are the reference:
 the code follows them.
 
-
-![Streets of Evere at 1:893, house numbers along the facades](docs/img/brussels-street.png)
-
-*Parcels, buildings by area and house numbers, with the three styles of
-[`styles/showcase`](styles/showcase). Brussels, UrbIS data.*
-
-```
-render2d data/UrbISBuildings_04000_CadastralParcels.shp --style styles/showcase/parcels.yaml \
-         data/UrbISBuildings_04000_Buildings.shp      --style styles/showcase/buildings.yaml \
-         data/UrbISBuildings_04000_Addresses.shp      --style styles/showcase/addresses.yaml \
-         --bbox 152032 174072 152382 174297 --size 1400x900 -o brussels-street.png
-```
-
-The design notes can also be read online:
-<https://nfr25.github.io/render2d/render2d/docs/notions.en.html>
-
 ## Status
 
 | Step | Content | |
@@ -80,6 +64,23 @@ make fresh      # after unpacking a zip: dates the sources now, then test + rele
 When another project includes render2d with `add_subdirectory` (editor2d), only
 the libraries are built: the programs and tests are skipped. The option
 `R2D_BUILD_PROGRAMS` (default: ON when render2d is the main project) decides.
+
+## Windows binary, without MSYS2
+
+Each release on GitHub has a ready-made zip:
+[Releases](https://github.com/nfr25/render2d/releases), `render2d-<version>-windows-x64.zip`.
+Unzip it anywhere and run `render2d --version` in a command prompt: the DLLs
+are next to the executable, and GDAL's and PROJ's reference files in `share\`
+(found beside the executable since 0.4.4; `GDAL_DATA` and `PROJ_DATA`, when
+set, still win). `--version` shows which folders were used.
+
+To build that zip yourself, in the UCRT64 terminal:
+
+```
+tools/package-windows.sh     # build, copy DLLs and data, check without MSYS2, zip into dist/
+```
+
+Details in the notes, chapter 68.
 
 ## Characterization test
 
@@ -483,6 +484,7 @@ src/map/            the map as a library (layers kept open, the report, queries)
 styles/             example YSLD styles
 src/app/            render2d (the command), render2d_demo (step 1 scene)
 tests/              one test program per library, run by `make test`
+tools/              regress.sh (characterization test), package-windows.sh (the Windows zip)
 docs/notions.en.html   design notes
 ```
 

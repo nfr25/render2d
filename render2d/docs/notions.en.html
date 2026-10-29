@@ -169,8 +169,9 @@ th{background:var(--code)}
   <a href="#rasterdraw">66. Laying the image down</a>
   <strong style="margin-top:8px">Cheat sheet</strong>
   <a href="#postgis">67. PostGIS, for those who know Oracle</a>
-  <a href="#refs">68. References</a>
-  <a href="#road">69. Roadmap</a>
+  <a href="#windows">68. A Windows executable</a>
+  <a href="#refs">69. References</a>
+  <a href="#road">70. Roadmap</a>
 </nav>
 
 <!-- ============================================================== -->
@@ -2613,8 +2614,45 @@ WHERE geom &amp;&amp; ST_MakeEnvelope(147000,171000,148000,172000, 31370);
 </section>
 
 <!-- ============================================================== -->
+<section id="windows">
+  <h2>68. A Windows executable, unzipped anywhere</h2>
+  <p>Built under MSYS2, <code>render2d.exe</code> runs fine in the UCRT64 terminal: there, <code>/ucrt64/bin</code> is in the <code>PATH</code> and GDAL knows where its files are. On a PC without MSYS2, two things are missing: <strong>the DLLs</strong> (GDAL, Cairo, PROJ, GEOS… about a hundred of them), and <strong>the reference files</strong> that GDAL and PROJ read at run time. The release zip carries both, in one folder.</p>
+
+  <h3>The DLLs: next to the executable</h3>
+  <p>When Windows starts a program, it looks for each DLL first in the program's own folder, then in the system folders, then in the <code>PATH</code>. So a DLL placed next to <code>render2d.exe</code> is always found, whatever the <code>PATH</code>. Which ones? <code>ldd render2d.exe</code> lists every DLL loaded, those needed by the DLLs included; we keep those coming from <code>/ucrt64/bin</code>. The Windows ones (<code>kernel32.dll</code>, <code>ucrtbase.dll</code>…) are on every PC.</p>
+
+  <h3>The reference files: <code>share/</code> next to the executable</h3>
+  <ul>
+    <li><strong>PROJ</strong> reads <code>proj.db</code>, a SQLite database of every coordinate system: "EPSG:31370" is found there, with its ellipsoid and its parameters. Without it, a <code>.prj</code> or a GeoJSON's <code>crs</code> is not recognised.</li>
+    <li><strong>GDAL</strong> reads its <code>share/gdal</code> folder: driver descriptions, some tables. Fewer things depend on it, but some drivers need it.</li>
+  </ul>
+  <p>Both look in the folder fixed at build time (<code>/ucrt64/share/…</code>), which does not exist elsewhere. Since 0.4.4, <code>gdalInit()</code> looks beside the executable, before registering the drivers:</p>
+  <div class="calc"><strong>Who decides, in order</strong><ol>
+    <li>The executable's folder: <code>GetModuleFileNameW</code> on Windows (the true path, even when started from the <code>PATH</code>), <code>/proc/self/exe</code> on Linux.</li>
+    <li>GDAL: if <code>GDAL_DATA</code> is set in the environment, it wins (the user knows best). Otherwise, if <code>&lt;exe&gt;\share\gdal</code> exists: <code>CPLSetConfigOption("GDAL_DATA", …)</code>.</li>
+    <li>PROJ: if <code>PROJ_DATA</code> (or the older <code>PROJ_LIB</code>) is set, it wins. Otherwise, if <code>&lt;exe&gt;\share\proj\proj.db</code> exists: <code>OSRSetPROJSearchPaths</code>.</li>
+    <li>Otherwise nothing changes: under MSYS2, the built-in paths work as before.</li>
+  </ol></div>
+  <p><code>render2d --version</code> says what was chosen, so a doubt is settled in one command:</p>
+<pre>render2d 0.4.4 — step 4a (0.4.4: GDAL and PROJ data beside the executable)
+…
+GDAL data: C:\Tools\render2d-0.4.4-windows-x64\share\gdal (beside the executable)
+PROJ data: C:\Tools\render2d-0.4.4-windows-x64\share\proj (beside the executable)</pre>
+  <p>The big transformation grids of PROJ (<code>*.tif</code>, hundreds of MB) are left out: a Lambert 72 map does not need them, and PROJ can fetch one on demand if a precise datum shift ever does.</p>
+
+  <h3>The script: <code>tools/package-windows.sh</code></h3>
+  <p>In the UCRT64 terminal: build the Release, copy the executable and its DLLs, <code>share/gdal</code> and <code>share/proj</code>, the styles, the licenses; then <strong>check</strong>: start it with a <code>PATH</code> holding only <code>C:\Windows</code> and the environment empty, and draw a small square in EPSG:31370. If a DLL is missing, it does not start; if <code>proj.db</code> is not found, the report does not name EPSG:31370. Only then the zip: <code>dist/render2d-&lt;version&gt;-windows-x64.zip</code>.</p>
+
+  <h3>The licenses</h3>
+  <p>render2d is AGPL; the libraries shipped with it keep their own licenses (MIT, LGPL, BSD…), and most of them ask that their text travel with the binaries. <code>pacman -Qqo</code> gives the MSYS2 package of each DLL; the script copies its <code>share/licenses/&lt;package&gt;</code> folder and writes the list of packages with their versions in <code>licenses/PACKAGES.txt</code>. The LGPL libraries (Cairo, among others) are DLLs: a user can replace them, which is what that license asks.</p>
+
+  <h3>Publishing: a GitHub Release</h3>
+  <p>The zip does not go into git (<code>dist/</code> is ignored): it is attached to a <em>Release</em>, a page tied to a tag (<code>v0.4.4</code>), where anyone downloads it without cloning. Later, a GitHub Action could build it on every tag, on a Windows machine with MSYS2: the same script, run by someone else.</p>
+</section>
+
+<!-- ============================================================== -->
 <section id="refs">
-  <h2>68. References</h2>
+  <h2>69. References</h2>
   <h3>Books</h3>
   <ul class="refs">
     <li><strong>Adobe Systems, <em>PostScript Language Reference Manual</em></strong> (the "red book"), 3<sup>rd</sup> ed., 1999. The origin of the path / fill / stroke model, of the even-odd and non-zero rules, of <code>gsave</code>/<code>grestore</code>. Chapters 10 and 11.</li>
@@ -2658,7 +2696,7 @@ WHERE geom &amp;&amp; ST_MakeEnvelope(147000,171000,148000,172000, 31370);
 
 <!-- ============================================================== -->
 <section id="road">
-  <h2>69. Roadmap</h2>
+  <h2>70. Roadmap</h2>
   <ol class="road">
     <li>Step 1 — Matrix, canvas, Cairo surface: test shapes in PNG, SVG and PDF. ✓</li>
     <li>Step 2 — GDAL/OGR reading: drawing a real layer with a fixed style. ✓</li>
@@ -2687,7 +2725,7 @@ WHERE geom &amp;&amp; ST_MakeEnvelope(147000,171000,148000,172000, 31370);
     <li>Step 7 — Vector tiles (MVT): the same reading, clipping and simplification steps, an MVT encoder next to the canvas, and the translation of YSLD into a MapLibre style.</li>
   </ol>
   <p class="muted">The "style" and "reprojection" steps were swapped after the first rendering of Brussels: all the test data are in Lambert 72, and the most visible need was style (outlines wider than the buildings at small scale).</p>
-  <p class="muted">Versions follow this roadmap: <code>0.&lt;step&gt;.&lt;sub-step&gt;</code>, so 0.3.4 for step 3d, 0.3.5 for step 3e, 0.3.6 for step 3f, 0.3.7 for step 3g, 0.3.8 for step 3h, 0.3.9 for step 3i, 0.3.10 for step 3j, 0.3.11 for step 3k, 0.3.12 for step 3l, 0.3.13 for step 3m, 0.3.14 for step 3n (0.3.15: scale bands; 0.3.16: reclassifying), 0.3.17 for step 3o, 0.4.0 for step 4a (0.4.1: <code>listLayers</code>; 0.4.2: the session password; 0.4.3: tables without geometry; for editor2d). <code>render2d --version</code> shows it, with the build date and the GDAL and Cairo versions, and the report starts with it: a forgotten executable is spotted immediately.</p>
+  <p class="muted">Versions follow this roadmap: <code>0.&lt;step&gt;.&lt;sub-step&gt;</code>, so 0.3.4 for step 3d, 0.3.5 for step 3e, 0.3.6 for step 3f, 0.3.7 for step 3g, 0.3.8 for step 3h, 0.3.9 for step 3i, 0.3.10 for step 3j, 0.3.11 for step 3k, 0.3.12 for step 3l, 0.3.13 for step 3m, 0.3.14 for step 3n (0.3.15: scale bands; 0.3.16: reclassifying), 0.3.17 for step 3o, 0.4.0 for step 4a (0.4.1: <code>listLayers</code>; 0.4.2: the session password; 0.4.3: tables without geometry; for editor2d; 0.4.4: the data beside the executable, for the Windows zip, §68). <code>render2d --version</code> shows it, with the build date and the GDAL and Cairo versions, and the report starts with it: a forgotten executable is spotted immediately.</p>
   <p class="muted">Desirable, without a date: label collisions and labels straddling tile edges.</p>
   <p class="muted">Then: <code>profile</code> and <code>autostyle</code>, then a custom engine (AGG or Blend2D) behind the same canvas.</p>
 </section>

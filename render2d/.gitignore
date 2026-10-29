@@ -5,3 +5,4 @@ build-release/
 *.pdf
 !docs/**
 regress/
+dist/
