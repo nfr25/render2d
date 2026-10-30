@@ -96,7 +96,11 @@ def load(path: str | Path) -> Config:
         raise ConfigError(f'{path}: expected a map (render2d, layers, start)')
 
     warnings: list[str] = []
-    folder = path.resolve().parent
+    # Absolute, but NOT resolve(): on Windows, resolve() turns a mapped drive
+    # (Z: on a NAS) into its network path (//synology/...), which render2d,
+    # given --config with it, read as Z:/synology/... (30 October).
+    full = Path(os.path.abspath(path))
+    folder = full.parent
     for key in data:
         if key not in KNOWN_KEYS:
             warnings.append(f"'{key}' is unknown, ignored")
@@ -149,5 +153,5 @@ def load(path: str | Path) -> Config:
     metatile = int(data.get('metatile', 4))
     if not 1 <= metatile <= 16:
         raise ConfigError("'metatile' must be between 1 and 16")
-    return Config(path.resolve().as_posix(), exe, layers, bbox, max(1, max_parallel), warnings,
+    return Config(full.as_posix(), exe, layers, bbox, max(1, max_parallel), warnings,
                   tiles_dir or None, metatile, crs)
