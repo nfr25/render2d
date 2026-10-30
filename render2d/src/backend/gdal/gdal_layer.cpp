@@ -4,8 +4,12 @@
 #include <map>
 #include <unordered_set>
 
+#include <cctype>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <mutex>
+#include <sstream>
 
 #include <cpl_error.h>
 #include <gdal_priv.h>
@@ -79,6 +83,17 @@ std::string conninfoValue(const std::string& v) {
     return out + "'";
 }
 
+// §67: after "no password supplied", where render2d looked, so that the
+// fix is obvious (a pgpass.conf line for the wrong host, no file...).
+std::string passwordHint(const std::string& source, const std::string& error) {
+    if (source.rfind("PG:", 0) != 0 || error.find("password") == std::string::npos) return {};
+    const PasswordSearch s = findPgPassword(source);
+    if (s.password) return " (a password was found in " + s.where + ": is it the right one?)";
+    std::string hint = " (no password: typed none this session";
+    for (const std::string& t : s.tried) hint += "; " + t;
+    return hint + ")";
+}
+
 } // namespace
 
 void setSessionPassword(const std::string& connection, const std::string& password) {
@@ -89,9 +104,129 @@ void setSessionPassword(const std::string& connection, const std::string& passwo
 
 std::string withSessionPassword(const std::string& source) {
     if (source.rfind("PG:", 0) != 0) return source;
-    std::lock_guard<std::mutex> lock(g_passwordsMutex);
-    const auto it = g_passwords.find(source);
-    return it == g_passwords.end() ? source : source + " password=" + conninfoValue(it->second);
+    {
+        std::lock_guard<std::mutex> lock(g_passwordsMutex);
+        const auto it = g_passwords.find(source);
+        if (it != g_passwords.end()) return source + " password=" + conninfoValue(it->second);
+    }
+    if (conninfoFields(source).count("password")) return source;   // written in the string: libpq's
+    const PasswordSearch found = findPgPassword(source);
+    return found.password ? source + " password=" + conninfoValue(*found.password) : source;
+}
+
+std::map<std::string, std::string> conninfoFields(const std::string& connection) {
+    std::map<std::string, std::string> out;
+    std::string s = connection.rfind("PG:", 0) == 0 ? connection.substr(3) : connection;
+    std::size_t i = 0;
+    auto skipSpace = [&] { while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i]))) ++i; };
+    while (true) {
+        skipSpace();
+        if (i >= s.size()) break;
+        const std::size_t eq = s.find('=', i);
+        if (eq == std::string::npos) break;
+        std::string key = s.substr(i, eq - i);
+        while (!key.empty() && std::isspace(static_cast<unsigned char>(key.back()))) key.pop_back();
+        i = eq + 1;
+        skipSpace();
+        std::string value;
+        if (i < s.size() && s[i] == '\'') {   // 'quoted', \' and \\ escaped
+            for (++i; i < s.size() && s[i] != '\''; ++i) {
+                if (s[i] == '\\' && i + 1 < s.size()) ++i;
+                value += s[i];
+            }
+            ++i;
+        } else {
+            while (i < s.size() && !std::isspace(static_cast<unsigned char>(s[i]))) value += s[i++];
+        }
+        out[key] = value;
+    }
+    return out;
+}
+
+std::optional<std::string> pgpassMatch(const std::string& text, const std::string& host, const std::string& port,
+                                       const std::string& database, const std::string& user) {
+    std::istringstream in(text);
+    for (std::string line; std::getline(in, line);) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty() || line[0] == '#') continue;
+        std::vector<std::string> f(1);
+        for (std::size_t k = 0; k < line.size(); ++k) {
+            if (line[k] == '\\' && k + 1 < line.size()) f.back() += line[++k];
+            else if (line[k] == ':' && f.size() < 5) f.emplace_back();
+            else f.back() += line[k];
+        }
+        if (f.size() != 5) continue;
+        auto ok = [](const std::string& pattern, const std::string& v) { return pattern == "*" || pattern == v; };
+        if (ok(f[0], host) && ok(f[1], port) && ok(f[2], database) && ok(f[3], user)) return f[4];
+    }
+    return std::nullopt;
+}
+
+PasswordSearch findPgPassword(const std::string& connection) {
+    PasswordSearch r;
+    auto env = [](const char* name) -> std::string {
+        const char* v = std::getenv(name);
+        return v ? v : "";
+    };
+    if (const std::string p = env("PGPASSWORD"); !p.empty()) {
+        r.password = p;
+        r.where    = "PGPASSWORD";
+        return r;
+    }
+    r.tried.push_back("PGPASSWORD: not set");
+
+    // The four values libpq would use, with its defaults.
+    const auto fields = conninfoFields(connection);
+    auto value = [&](const char* key, const char* envName, const std::string& fallback) {
+        if (const auto it = fields.find(key); it != fields.end() && !it->second.empty()) return it->second;
+        if (const std::string e = env(envName); !e.empty()) return e;
+        return fallback;
+    };
+#ifdef _WIN32
+    const std::string osUser = env("USERNAME");
+#else
+    const std::string osUser = env("USER");
+#endif
+    const std::string user = value("user", "PGUSER", osUser);
+    const std::string host = value("host", "PGHOST", "localhost");
+    const std::string port = value("port", "PGPORT", "5432");
+    const std::string db   = value("dbname", "PGDATABASE", user);
+
+    std::string file = env("PGPASSFILE");
+    if (file.empty()) {
+#ifdef _WIN32
+        if (const std::string appdata = env("APPDATA"); !appdata.empty()) file = appdata + "\\postgresql\\pgpass.conf";
+#else
+        if (const std::string home = env("HOME"); !home.empty()) file = home + "/.pgpass";
+#endif
+    }
+    if (file.empty()) {
+        r.tried.push_back("no password file (neither PGPASSFILE nor APPDATA/HOME)");
+        return r;
+    }
+    std::ifstream in(std::filesystem::path(file), std::ios::binary);
+    if (!in) {
+        r.tried.push_back(file + ": not found");
+        return r;
+    }
+    std::stringstream text;
+    text << in.rdbuf();
+    if (auto p = pgpassMatch(text.str(), host, port, db, user)) {
+        r.password = std::move(p);
+        r.where    = file;
+        return r;
+    }
+    r.tried.push_back(file + ": no line for " + host + ":" + port + ":" + db + ":" + user);
+    return r;
+}
+
+std::pair<std::string, std::string> splitSource(const std::string& source) {
+    const auto sep = source.rfind("::");
+    if (sep == std::string::npos) return {source, ""};
+    std::string file = source.substr(0, sep);
+    if (file.rfind("PG:", 0) == 0)
+        while (!file.empty() && file.back() == ':') file.pop_back();   // "...::::table"
+    return {file, source.substr(sep + 2)};
 }
 
 std::vector<LayerInfo> listLayers(const std::string& source, std::string& error) {
@@ -102,6 +237,7 @@ std::vector<LayerInfo> listLayers(const std::string& source, std::string& error)
     if (!ds) {
         error = "cannot open '" + source + "'";
         if (CPLGetLastErrorMsg()[0] != '\0') error += std::string(": ") + CPLGetLastErrorMsg();
+        error += passwordHint(source, error);
         return out;
     }
     for (int i = 0; i < ds->GetLayerCount(); ++i) {
@@ -141,6 +277,7 @@ std::unique_ptr<GdalLayer> GdalLayer::open(const std::string& source,
     if (!l->impl_->dataset) {
         error = "cannot open '" + source + "'";
         if (CPLGetLastErrorMsg()[0] != '\0') error += std::string(": ") + CPLGetLastErrorMsg();
+        error += passwordHint(source, error);
         return nullptr;
     }
 

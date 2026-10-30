@@ -47,6 +47,41 @@ std::optional<Envelope> extentInCrs(const CrsInfo& layerCrs, const std::optional
 // declared counts as the same (assumed to be the map's, with a warning).
 bool sameCrs(const CrsInfo& a, const CrsInfo& b);
 
+// ---- The catalogue (editor2d's Map system dialog, its §70) ----------------------
+
+// One projected system as PROJ's database lists it.
+struct CrsEntry {
+    std::string code;              // "EPSG:5316"
+    std::string name;              // "ETRS89 / Faroe TM"
+    std::string area;              // "Faroe Islands - onshore and offshore."
+    bool        hasArea = false;   // the rectangle below is known
+    double      west = 0, south = 0, east = 0, north = 0;   // its area of use, degrees
+
+    // The point (degrees) is in the area's rectangle. One crossing the
+    // 180th meridian has west > east.
+    bool contains(double lon, double lat) const;
+    // The rectangle's size, in square degrees: the local systems first.
+    double size() const;
+};
+
+// Every projected system of the EPSG register that is not deprecated
+// (about 5,000), read once from proj.db, sorted by code. Thread-safe.
+const std::vector<CrsEntry>& projectedCatalog();
+
+// The entries whose code, name and area together contain every word of
+// `words` (any case: "faroe", "utm 29n", "31370"); with `near` (degrees),
+// only those whose area of use contains it, the most local first.
+// Otherwise by code. At most `limit` (0 = all).
+std::vector<const CrsEntry*> searchCatalog(const std::vector<CrsEntry>& catalog, const std::string& words,
+                                           const std::optional<Point>& near, std::size_t limit = 0);
+
+// The catalogue's entry of a system (by its EPSG code), or nullptr.
+const CrsEntry* catalogEntry(const CrsInfo& crs);
+
+// A point of `crs` in degrees, longitude first (the map's centre, to look
+// for the systems made for that place).
+std::optional<Point> toLonLat(const CrsInfo& crs, Point p);
+
 // One way, from a layer's CRS to the map's. Not thread-safe: one per Map,
 // as the open layers (§46).
 class CrsTransform {

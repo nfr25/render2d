@@ -1,0 +1,214 @@
+# OpenStreetMap roads, Geofabrik's schema (column fclass), in the colours of
+# openstreetmap-carto, the style of osm.org. render2d notes §71.
+# Four passes (§25): the paths underneath, then every casing, then the fills
+# of the small roads, then those of the big ones: a big road crosses a small
+# one cleanly. Three scale bands: near (up to 1:5,000), middle (to
+# 1:25,000), far (only the big roads, one line, no casing).
+# Widths in pixels. On a Mercator map the scale is 1.58 times larger in
+# Brussels (§70): the bands come a little later.
+name: osm-roads
+feature-styles:
+- rules:   # 1. footways, cycleways, tracks: near only
+  - name: footway
+    filter: ${fclass IN ('footway', 'path', 'steps')}
+    scale: [min, 5000]
+    symbolizers:
+    - line: {stroke-color: '#FA8072', stroke-width: 1.2, stroke-linecap: butt, stroke-linejoin: round, stroke-dasharray: '3 2'}
+  - name: cycleway
+    filter: ${fclass IN ('cycleway')}
+    scale: [min, 5000]
+    symbolizers:
+    - line: {stroke-color: '#0000FF', stroke-width: 1.2, stroke-linecap: butt, stroke-linejoin: round, stroke-dasharray: '4 2'}
+  - name: track
+    filter: ${fclass IN ('track', 'track_grade1', 'track_grade2', 'track_grade3', 'track_grade4', 'track_grade5')}
+    scale: [min, 5000]
+    symbolizers:
+    - line: {stroke-color: '#996600', stroke-width: 1.4, stroke-linecap: butt, stroke-linejoin: round, stroke-dasharray: '5 2'}
+  - name: bridleway
+    filter: ${fclass IN ('bridleway')}
+    scale: [min, 5000]
+    symbolizers:
+    - line: {stroke-color: '#008000', stroke-width: 1.2, stroke-linecap: butt, stroke-linejoin: round, stroke-dasharray: '3 2'}
+- rules:   # 2. the casings, every road, near and middle
+  - name: motorway-casing-near
+    filter: ${fclass IN ('motorway', 'motorway_link')}
+    scale: [min, 5000]
+    symbolizers:
+    - line: {stroke-color: '#DC2A67', stroke-width: 12, stroke-linecap: round, stroke-linejoin: round}
+  - name: motorway-casing
+    filter: ${fclass IN ('motorway', 'motorway_link')}
+    scale: [5000, 25000]
+    symbolizers:
+    - line: {stroke-color: '#DC2A67', stroke-width: 8, stroke-linecap: round, stroke-linejoin: round}
+  - name: trunk-casing-near
+    filter: ${fclass IN ('trunk', 'trunk_link')}
+    scale: [min, 5000]
+    symbolizers:
+    - line: {stroke-color: '#C84E2F', stroke-width: 12, stroke-linecap: round, stroke-linejoin: round}
+  - name: trunk-casing
+    filter: ${fclass IN ('trunk', 'trunk_link')}
+    scale: [5000, 25000]
+    symbolizers:
+    - line: {stroke-color: '#C84E2F', stroke-width: 8, stroke-linecap: round, stroke-linejoin: round}
+  - name: primary-casing-near
+    filter: ${fclass IN ('primary', 'primary_link')}
+    scale: [min, 5000]
+    symbolizers:
+    - line: {stroke-color: '#A06B00', stroke-width: 11, stroke-linecap: round, stroke-linejoin: round}
+  - name: primary-casing
+    filter: ${fclass IN ('primary', 'primary_link')}
+    scale: [5000, 25000]
+    symbolizers:
+    - line: {stroke-color: '#A06B00', stroke-width: 7, stroke-linecap: round, stroke-linejoin: round}
+  - name: secondary-casing-near
+    filter: ${fclass IN ('secondary', 'secondary_link')}
+    scale: [min, 5000]
+    symbolizers:
+    - line: {stroke-color: '#707D05', stroke-width: 10, stroke-linecap: round, stroke-linejoin: round}
+  - name: secondary-casing
+    filter: ${fclass IN ('secondary', 'secondary_link')}
+    scale: [5000, 25000]
+    symbolizers:
+    - line: {stroke-color: '#707D05', stroke-width: 6, stroke-linecap: round, stroke-linejoin: round}
+  - name: tertiary-casing-near
+    filter: ${fclass IN ('tertiary', 'tertiary_link')}
+    scale: [min, 5000]
+    symbolizers:
+    - line: {stroke-color: '#8F8F8F', stroke-width: 9, stroke-linecap: round, stroke-linejoin: round}
+  - name: tertiary-casing
+    filter: ${fclass IN ('tertiary', 'tertiary_link')}
+    scale: [5000, 25000]
+    symbolizers:
+    - line: {stroke-color: '#8F8F8F', stroke-width: 5, stroke-linecap: round, stroke-linejoin: round}
+  - name: residential-casing-near
+    filter: ${fclass IN ('residential', 'unclassified', 'living_street', 'unknown')}
+    scale: [min, 5000]
+    symbolizers:
+    - line: {stroke-color: '#BBBBBB', stroke-width: 8, stroke-linecap: round, stroke-linejoin: round}
+  - name: residential-casing
+    filter: ${fclass IN ('residential', 'unclassified', 'living_street', 'unknown')}
+    scale: [5000, 25000]
+    symbolizers:
+    - line: {stroke-color: '#BBBBBB', stroke-width: 3.5, stroke-linecap: round, stroke-linejoin: round}
+  - name: pedestrian-casing-near
+    filter: ${fclass IN ('pedestrian')}
+    scale: [min, 5000]
+    symbolizers:
+    - line: {stroke-color: '#999999', stroke-width: 7, stroke-linecap: round, stroke-linejoin: round}
+  - name: pedestrian-casing
+    filter: ${fclass IN ('pedestrian')}
+    scale: [5000, 25000]
+    symbolizers:
+    - line: {stroke-color: '#999999', stroke-width: 3, stroke-linecap: round, stroke-linejoin: round}
+  - name: service-casing-near
+    filter: ${fclass IN ('service')}
+    scale: [min, 5000]
+    symbolizers:
+    - line: {stroke-color: '#BBBBBB', stroke-width: 5, stroke-linecap: round, stroke-linejoin: round}
+  - name: busway-casing-near
+    filter: ${fclass IN ('busway')}
+    scale: [min, 5000]
+    symbolizers:
+    - line: {stroke-color: '#4D6DCC', stroke-width: 6, stroke-linecap: round, stroke-linejoin: round}
+- rules:   # 3. the fills of the small roads (service first, under the others)
+  - name: busway-near
+    filter: ${fclass IN ('busway')}
+    scale: [min, 5000]
+    symbolizers:
+    - line: {stroke-color: '#99B3FF', stroke-width: 4, stroke-linecap: round, stroke-linejoin: round}
+  - name: service-near
+    filter: ${fclass IN ('service')}
+    scale: [min, 5000]
+    symbolizers:
+    - line: {stroke-color: '#FFFFFF', stroke-width: 3.5, stroke-linecap: round, stroke-linejoin: round}
+  - name: pedestrian-near
+    filter: ${fclass IN ('pedestrian')}
+    scale: [min, 5000]
+    symbolizers:
+    - line: {stroke-color: '#DDDDE8', stroke-width: 5.5, stroke-linecap: round, stroke-linejoin: round}
+  - name: pedestrian
+    filter: ${fclass IN ('pedestrian')}
+    scale: [5000, 25000]
+    symbolizers:
+    - line: {stroke-color: '#DDDDE8', stroke-width: 2, stroke-linecap: round, stroke-linejoin: round}
+  - name: residential-near
+    filter: ${fclass IN ('residential', 'unclassified', 'living_street', 'unknown')}
+    scale: [min, 5000]
+    symbolizers:
+    - line: {stroke-color: '#FFFFFF', stroke-width: 6.5, stroke-linecap: round, stroke-linejoin: round}
+  - name: residential
+    filter: ${fclass IN ('residential', 'unclassified', 'living_street', 'unknown')}
+    scale: [5000, 25000]
+    symbolizers:
+    - line: {stroke-color: '#FFFFFF', stroke-width: 2.5, stroke-linecap: round, stroke-linejoin: round}
+  - name: tertiary-near
+    filter: ${fclass IN ('tertiary', 'tertiary_link')}
+    scale: [min, 5000]
+    symbolizers:
+    - line: {stroke-color: '#FFFFFF', stroke-width: 7, stroke-linecap: round, stroke-linejoin: round}
+  - name: tertiary
+    filter: ${fclass IN ('tertiary', 'tertiary_link')}
+    scale: [5000, 25000]
+    symbolizers:
+    - line: {stroke-color: '#FFFFFF', stroke-width: 3.5, stroke-linecap: round, stroke-linejoin: round}
+- rules:   # 4. the fills of the big roads (motorway last, on top)
+  - name: secondary-near
+    filter: ${fclass IN ('secondary', 'secondary_link')}
+    scale: [min, 5000]
+    symbolizers:
+    - line: {stroke-color: '#F7FABF', stroke-width: 8, stroke-linecap: round, stroke-linejoin: round}
+  - name: secondary
+    filter: ${fclass IN ('secondary', 'secondary_link')}
+    scale: [5000, 25000]
+    symbolizers:
+    - line: {stroke-color: '#F7FABF', stroke-width: 4.5, stroke-linecap: round, stroke-linejoin: round}
+  - name: secondary-far
+    filter: ${fclass IN ('secondary', 'secondary_link')}
+    scale: [25000, max]
+    symbolizers:
+    - line: {stroke-color: '#707D05', stroke-width: 1.5, stroke-linecap: round, stroke-linejoin: round}
+  - name: primary-near
+    filter: ${fclass IN ('primary', 'primary_link')}
+    scale: [min, 5000]
+    symbolizers:
+    - line: {stroke-color: '#FCD6A4', stroke-width: 9, stroke-linecap: round, stroke-linejoin: round}
+  - name: primary
+    filter: ${fclass IN ('primary', 'primary_link')}
+    scale: [5000, 25000]
+    symbolizers:
+    - line: {stroke-color: '#FCD6A4', stroke-width: 5.5, stroke-linecap: round, stroke-linejoin: round}
+  - name: primary-far
+    filter: ${fclass IN ('primary', 'primary_link')}
+    scale: [25000, max]
+    symbolizers:
+    - line: {stroke-color: '#A06B00', stroke-width: 2, stroke-linecap: round, stroke-linejoin: round}
+  - name: trunk-near
+    filter: ${fclass IN ('trunk', 'trunk_link')}
+    scale: [min, 5000]
+    symbolizers:
+    - line: {stroke-color: '#F9B29C', stroke-width: 10, stroke-linecap: round, stroke-linejoin: round}
+  - name: trunk
+    filter: ${fclass IN ('trunk', 'trunk_link')}
+    scale: [5000, 25000]
+    symbolizers:
+    - line: {stroke-color: '#F9B29C', stroke-width: 6.5, stroke-linecap: round, stroke-linejoin: round}
+  - name: trunk-far
+    filter: ${fclass IN ('trunk', 'trunk_link')}
+    scale: [25000, max]
+    symbolizers:
+    - line: {stroke-color: '#C84E2F', stroke-width: 2.5, stroke-linecap: round, stroke-linejoin: round}
+  - name: motorway-near
+    filter: ${fclass IN ('motorway', 'motorway_link')}
+    scale: [min, 5000]
+    symbolizers:
+    - line: {stroke-color: '#E892A2', stroke-width: 10, stroke-linecap: round, stroke-linejoin: round}
+  - name: motorway
+    filter: ${fclass IN ('motorway', 'motorway_link')}
+    scale: [5000, 25000]
+    symbolizers:
+    - line: {stroke-color: '#E892A2', stroke-width: 6.5, stroke-linecap: round, stroke-linejoin: round}
+  - name: motorway-far
+    filter: ${fclass IN ('motorway', 'motorway_link')}
+    scale: [25000, max]
+    symbolizers:
+    - line: {stroke-color: '#DC2A67', stroke-width: 3, stroke-linecap: round, stroke-linejoin: round}

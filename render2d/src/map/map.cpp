@@ -100,6 +100,13 @@ struct Map::Layer {
     std::unique_ptr<ReprojectedLayer> reprojected;
     std::optional<Envelope>           mapExtent;      // the extent, converted
     bool                              unusable = false;   // another CRS, and no way to the map's: not drawn
+    std::optional<CrsInfo>            declared;           // LayerSpec::crs, read: wins over the file's
+
+    // The layer's system: declared in the map file, else the file's own.
+    const CrsInfo& crs() const { return declared ? *declared : info().crs; }
+    // A declared system is believed; the file's, if it is believable (a
+    // GeoJSON in metres claiming degrees is not, §70).
+    bool believable() const { return declared || crsBelievable(info().crs, info().extent); }
 
     // What renderLayer and the queries read: the layer, or the layer converted.
     FeatureSource& features() { return reprojected ? static_cast<FeatureSource&>(*reprojected) : *source; }
@@ -126,11 +133,7 @@ Map::~Map() = default;
 
 std::unique_ptr<Map::Layer> Map::openLayer(const LayerSpec& spec, int colour,
                                            std::vector<std::string>& warnings) const {
-    std::string source = spec.source, layerName;
-    if (const auto sep = spec.source.rfind("::"); sep != std::string::npos) {
-        source    = spec.source.substr(0, sep);
-        layerName = spec.source.substr(sep + 2);
-    }
+    const auto [source, layerName] = splitSource(spec.source);   // "file::layer"; "PG:...::::t" repaired
     // A vector layer, or else a raster (§65). Neither: the message that
     // says the most (a TIFF without position is a raster with a problem).
     std::string error;
@@ -152,6 +155,11 @@ std::unique_ptr<Map::Layer> Map::openLayer(const LayerSpec& spec, int colour,
                            std::to_string(layer->raster->height()) + " pixels and no overviews: a view of the whole "
                            "reads every pixel. Once for all: gdaladdo -r average \"" + source + "\" 2 4 8 16 32 64");
     layer->index   = colour;   // §58: the default style's colour, kept when the layer moves
+    if (!spec.crs.empty()) {   // §70: "this file is in ..."
+        std::string why;
+        if (auto c = crsFromText(spec.crs, why)) layer->declared = std::move(*c);
+        else warnings.push_back(layer->info().name + ": crs: " + why + " (the file's own is used)");
+    }
     layer->visible = spec.visible;
 
     // Style file: warnings are reported, a bad file falls back to the default.
@@ -165,8 +173,6 @@ std::unique_ptr<Map::Layer> Map::openLayer(const LayerSpec& spec, int colour,
     return layer;
 }
 
-// §70: a hand-made GeoJSON in Lambert metres claims degrees (crsBelievable).
-static bool notReallyDegrees(const LayerInfo& li) { return !crsBelievable(li.crs, li.extent); }
 
 // §70: the layer in the map's CRS. The same system: nothing at all (the
 // image is the same to the byte). Another: a conversion, prepared once.
@@ -176,25 +182,30 @@ void Map::bindLayer(Layer& layer, std::vector<std::string>& warnings) const {
     layer.mapExtent.reset();
     layer.unusable = false;
     const LayerInfo& li = layer.info();
-    if (!li.crs.known) {
-        if (crs_.known) warnings.push_back(li.name + ": no CRS declared, assumed to be the map CRS");
+    const CrsInfo& lc = layer.crs();
+    if (!lc.known) {
+        if (crs_.known) warnings.push_back(li.name + ": no CRS declared, assumed to be the map CRS "
+                                           "(crs: in the map file declares it)");
         return;
     }
-    if (notReallyDegrees(li)) {
+    if (!layer.believable()) {
         if (crs_.known)   // as for "no CRS declared": said only when there is a map CRS to assume
-            warnings.push_back(li.name + ": declared in degrees (" + crsLabel(li.crs) + ") but its coordinates are not "
+            warnings.push_back(li.name + ": declared in degrees (" + crsLabel(lc) + ") but its coordinates are not "
                                "(GeoJSON without \"crs\"?): assumed to be the map CRS");
         return;
     }
-    if (sameCrs(li.crs, crs_)) return;
+    if (sameCrs(lc, crs_)) return;
     if (layer.raster) {   // 4b-2: warping
-        warnings.push_back(li.name + ": CRS " + crsLabel(li.crs) + " differs from the map CRS " + crsLabel(crs_) +
-                           ": a raster is not reprojected yet (step 4b-2), not drawn");
+        // §70: postponed. Said with the command that does it once, outside.
+        const std::string code = crs_.epsg ? "EPSG:" + std::to_string(crs_.epsg) : crs_.code;
+        warnings.push_back(li.name + ": CRS " + crsLabel(lc) + " differs from the map CRS " + crsLabel(crs_) +
+                           ": a raster is not reprojected yet (step 4b-2), not drawn. Once for all: gdalwarp -t_srs " +
+                           (code.empty() ? std::string("<map CRS>") : code) + " -r bilinear -of COG in.tif out.tif");
         layer.unusable = true;
         return;
     }
     std::string error;
-    layer.toMap = CrsTransform::create(li.crs, crs_, li.extent, error);
+    layer.toMap = CrsTransform::create(lc, crs_, li.extent, error);
     if (!layer.toMap) {
         warnings.push_back(li.name + ": " + error + ", not drawn");
         layer.unusable = true;
@@ -206,8 +217,8 @@ void Map::bindLayer(Layer& layer, std::vector<std::string>& warnings) const {
 
 bool Map::takeCrsFrom(const Layer& layer, std::vector<std::string>& warnings) {
     if (crsGiven_ || crs_.known) return false;
-    const CrsInfo& c = layer.info().crs;
-    if (!c.known || notReallyDegrees(layer.info())) return false;
+    const CrsInfo& c = layer.crs();
+    if (!c.known || !layer.believable()) return false;
     crs_ = crsForMap(c);
     if (c.geographic)   // §70: a map in degrees is refused
         warnings.push_back(layer.info().name + " is in degrees (" + crsLabel(c) +
@@ -297,6 +308,8 @@ std::optional<Envelope> Map::layerExtent(int i) const {
     if (layer.unusable) return std::nullopt;
     return layer.toMap ? layer.mapExtent : layer.info().extent;
 }
+
+const CrsInfo& Map::layerCrs(int i) const { return layers_.at(static_cast<std::size_t>(i))->crs(); }
 
 const std::string& Map::layerReprojection(int i) const {
     static const std::string none;

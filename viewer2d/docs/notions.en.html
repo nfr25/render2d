@@ -191,6 +191,7 @@ ui.run()</pre>
   <pre>const xy = (x, y) =&gt; L.latLng(y, x);       // we think in (X, Y), Leaflet receives [Y, X]</pre>
   <h3>Why not NiceGUI's <code>ui.leaflet</code>?</h3>
   <p>NiceGUI provides a map component, <code>ui.leaflet</code>, very handy in Web Mercator. But its options go through JSON, and a coordinate system like <code>L.CRS.Simple</code> is a JavaScript object, which JSON cannot carry; its documentation does not mention it. For this Lambert test bench, we therefore write a few dozen lines of JavaScript with Leaflet directly, in the NiceGUI page. Once reprojection exists, we can move to <code>ui.leaflet</code> with an OpenStreetMap background.</p>
+  <p class="muted">Since viewer2d 1.3 (render2d 0.4.5): <code>L.CRS.Simple</code> knows nothing of Lambert, it is a plane. Any system in metres fits it: <code>crs:</code> in <code>viewer.yaml</code> chooses it (Lambert 72 by default), viewer2d passes it to render2d (<code>--crs</code>), and render2d converts the layers in other systems (its notes §70). <code>start: bbox</code> is then in that system.</p>
 </section>
 
 <!-- ============================================================== -->

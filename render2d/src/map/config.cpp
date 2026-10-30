@@ -113,6 +113,7 @@ std::string configText(const Config& config, const std::string& path) {
         if (l.style && !l.style->empty()) o << "    style: " << quoted(relativeToFolder(*l.style, folder)) << "\n";
         if (!l.visible) o << "    visible: false\n";
         if (!l.title.empty()) o << "    title: " << quoted(l.title) << "\n";
+        if (!l.crs.empty()) o << "    crs: " << quoted(l.crs) << "\n";   // §70
     }
     if (config.startBbox) {
         const Envelope& b = *config.startBbox;
@@ -192,7 +193,7 @@ ConfigResult loadConfig(const std::string& path) {
                 result.error = where + "expected 'source' (and optionally 'style')";
                 return result;
             }
-            unknownKeys(item, {"source", "style", "visible", "title"}, where, result.warnings);
+            unknownKeys(item, {"source", "style", "visible", "title", "crs"}, where, result.warnings);
             LayerSpec spec;
             try {
                 spec.source = resolve(item["source"].as<std::string>(), folder);
@@ -200,6 +201,7 @@ ConfigResult loadConfig(const std::string& path) {
                     spec.style = resolve(item["style"].as<std::string>(), folder);
                 if (item["visible"]) spec.visible = item["visible"].as<bool>();
                 if (item["title"]) spec.title = item["title"].as<std::string>();
+                if (item["crs"]) spec.crs = item["crs"].as<std::string>();   // §70: checked by the Map
             } catch (const YAML::Exception&) {
                 result.error = where + "'visible' must be true or false";
                 return result;

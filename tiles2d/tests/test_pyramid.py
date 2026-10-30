@@ -19,7 +19,7 @@ from PIL import Image, ImageChops  # noqa: E402
 
 from tiles2d import cache, grid  # noqa: E402
 from tiles2d.config import Layer  # noqa: E402
-from tiles2d.pyramid import build_layer, cut_metatile, tile_path  # noqa: E402
+from tiles2d.pyramid import build_layer, cut_metatile, render_command, tile_path  # noqa: E402
 
 
 def test_cut_metatile():
@@ -49,7 +49,23 @@ def test_cache_key():
         k2 = cache.layer_key(layer, str(exe))
         assert k2 != k1                                                    # style edited
         (d / 'b.dbf').write_bytes(b'attributes')
-        assert cache.layer_key(layer, str(exe)) != k2                      # companion file added
+        k3 = cache.layer_key(layer, str(exe))
+        assert k3 != k2                                                    # companion file added
+
+        # Another system, other tiles (render2d §70); Lambert 72, the default, keeps the key.
+        assert cache.layer_key(Layer(str(shp), str(style), 'b', None, 'EPSG:31370'), str(exe)) == k3
+        assert cache.layer_key(Layer(str(shp), str(style), 'b', None, 'EPSG:3857'), str(exe)) != k3
+        assert cache.layer_key(Layer(str(shp), str(style), 'b', 'EPSG:31300'), str(exe)) != k3
+
+
+def test_render_command_crs():
+    layer = Layer('osm.gpkg::roads', 's.yaml', 'roads')
+    cmd = render_command('render2d', layer, (0, 0, 256, 256), 256, 'm.png')
+    assert cmd[cmd.index('--crs') + 1] == 'EPSG:31370' and '--layer-crs' not in cmd
+    layer = Layer('old.shp', None, 'old', 'EPSG:31300', 'EPSG:3857')
+    cmd = render_command('render2d', layer, (0, 0, 256, 256), 256, 'm.png')
+    assert cmd[1] == 'old.shp' and cmd[2:4] == ['--layer-crs', 'EPSG:31300']   # right after its SOURCE
+    assert cmd[cmd.index('--crs') + 1] == 'EPSG:3857'
 
 
 def test_seam_with_render2d():

@@ -2480,6 +2480,15 @@ PG:host=db.example.org dbname=gis user=gisuser::urbis.buildings      (another sc
   <p>The password: in <code>pgpass.conf</code> (<code>%APPDATA%\postgresql\pgpass.conf</code> on Windows, <code>~/.pgpass</code> elsewhere), never in the string nor in the yaml. One line: <code>db.example.org:5432:gis:gisuser:PASSWORD</code>.</p>
   <p>A database's tables: <code>listLayers("PG:…")</code> (render2d 0.4.1) returns each layer with its name (<code>schema.table</code> outside <code>public</code>), its type, its feature count and its system, without the extent (costly on a large table). editor2d's "Connect to database" dialog calls it (its notes, §65), in a separate thread. Since 0.4.3, it also says whether a layer has a geometry (a GeoPackage stores value lists in tables without geometry) and gives the feature count only if GDAL knows it without counting (-1 otherwise).</p>
   <p>The password typed in that dialog: <code>setSessionPassword(connection, password)</code> (render2d 0.4.2) keeps it in memory, attached to the connection; every GDAL opening of that connection gets <code>password=…</code> added, and nothing else sees it (the source, the yaml, the messages). The <code>PGPASSWORD</code> variable, tried first, was not seen by <code>libpq.dll</code> on Windows.</p>
+  <h3>No password typed: render2d looks where libpq would <span class="tag">0.4.6</span></h3>
+  <p>On 30 October, with nothing typed, neither the dialog nor a <code>viewer.yaml</code> opened the database: "no password supplied", although libpq is supposed to read <code>PGPASSWORD</code> and <code>pgpass.conf</code> itself. Rather than guess why on that machine, render2d now looks itself, in libpq's order, and adds what it finds to what GDAL receives (never to the source, the yaml or a message):</p>
+  <div class="calc"><strong>For <code>PG:host=192.168.129.21 dbname=bdd_sig user=nfr</code></strong><ol>
+    <li>A password typed this session for this connection (above).</li>
+    <li>The <code>PGPASSWORD</code> variable of render2d's own environment.</li>
+    <li>The password file: <code>PGPASSFILE</code>, else <code>%APPDATA%\postgresql\pgpass.conf</code> on Windows (<code>~/.pgpass</code> elsewhere). Its first line <code>host:port:database:user:password</code> matching <strong>192.168.129.21 : 5432 : bdd_sig : nfr</strong>, <code>*</code> matching anything, <code>\:</code> a colon in a password. The port not written in the string is 5432, as for libpq; the user not written is the Windows user.</li>
+    <li>Nothing found: GDAL's message is followed by where render2d looked, for instance "(no password: typed none this session; PGPASSWORD: not set; C:\Users\…\AppData\Roaming\postgresql\pgpass.conf: no line for 192.168.129.21:5432:bdd_sig:nfr)". The usual culprits then show at once: a line written for another host name ("localhost", "server") or port, or Notepad's <code>pgpass.conf.txt</code>.</li>
+  </ol></div>
+  <p class="muted">The same day: a source written <code>PG:…connect_timeout=5::::municipalities</code> (the separator doubled) is read as <code>PG:…connect_timeout=5</code> and the table <code>municipalities</code> (<code>splitSource</code>): a connection string never ends with a colon.</p>
 
   <h3>The correspondence</h3>
   <div class="scroll"><table>
@@ -2723,6 +2732,14 @@ PROJ data: C:\Tools\render2d-0.4.4-windows-x64\share\proj (beside the executable
     <li>Without <code>--crs</code>, if the first layer is in degrees (an OSM extract alone), the map takes <strong>EPSG:3857</strong>, and says so: drawing works at once, and <code>--crs EPSG:31370</code> chooses Lambert.</li>
   </ul>
 
+  <h3>A layer's system, declared in the map file</h3>
+  <p>The map has one system; each layer, its own, taken from its file. When the file says none (a shapefile without its <code>.prj</code>) or a wrong one, the map file declares it, as QGIS's "Set layer CRS": the file is not changed, only how it is read.</p>
+<pre>crs: EPSG:31370                     # the map
+layers:
+  - source: data/old/plan-1998.shp  # no .prj
+    crs:    EPSG:31300              # "this file is in Belge Lambert 72"</pre>
+  <p>On the command line, <code>--layer-crs</code> after the SOURCE, as <code>--style</code>: <code>render2d plan-1998.shp --layer-crs EPSG:31300 --crs EPSG:3857 …</code>. A declared system is always believed, in degrees too.</p>
+
   <h3>A trap of GeoJSON: degrees by default</h3>
   <p>The GeoJSON standard (RFC 7946) says: no <code>"crs"</code> member means longitude and latitude, WGS 84. GDAL follows it and declares EPSG:4326 for every GeoJSON without <code>"crs"</code>, even a small file typed by hand in Lambert metres. Such a layer would be "converted" from 150,000 degrees and land nowhere.</p>
   <div class="calc"><strong>How render2d tells</strong><ol>
@@ -2767,9 +2784,29 @@ PROJ data: C:\Tools\render2d-0.4.4-windows-x64\share\proj (beside the executable
   <h3>Two sub-steps</h3>
   <ul>
     <li><strong>4b-1 (0.4.5) ✓: vectors.</strong> <code>--crs</code>, the <code>crs:</code> key, the conversion per layer, the filter in the layer's system, questions and extents, the report. Tests: the Grand-Place numbers above (Mercator to the millimetre, Lambert to the decimetre: the way PROJ chooses may change with its version), the axis order, a layer drawn identically when nothing needs converting.</li>
-    <li><strong>4b-2 (0.4.6): rasters.</strong> An image cannot be converted vertex by vertex: each pixel of the view must be looked for in the file (<em>warping</em>). GDAL does it (<code>GDALWarp</code>, from the view's window, using the overviews, §65), into an image of exactly the view's size, which is then laid down as today (§66). That opens the way to OpenStreetMap's tiles (§71).</li>
+    <li><strong>4b-2: rasters, postponed</strong> (29 October). See below.</li>
+  </ul>
+
+  <h3>Rasters in another system: postponed, and why</h3>
+  <p>An image cannot be converted vertex by vertex: for <em>each pixel</em> of the view, the pixel of the file that falls there must be found, and its colour taken (or mixed from its neighbours). That is <strong>warping</strong>, GDAL's oldest trade.</p>
+  <div class="calc"><strong>Why it is heavier than for vectors</strong><ol>
+    <li>A 1 km² view of the UrbIS buildings: about 15,300 vertices to convert (§70).</li>
+    <li>A 1,200 × 900 view of an image: 1,080,000 pixels, each one converted (GDAL converts a grid of points and interpolates between them, which saves most of the work), then resampled.</li>
+    <li>And the choice of the resampling matters: <code>bilinear</code> or <code>cubic</code> for a photo; <code>near</code> (the nearest pixel) for a raster of classes, where a mix of two colours means nothing.</li>
+  </ol></div>
+  <p>A map is rarely made of rasters in another system, and an image is converted <strong>once</strong>, with the tool everyone knows, into the map's system; render2d then reads it with no conversion at all, which stays the fastest:</p>
+<pre>gdalwarp -t_srs EPSG:31370 -r bilinear -of COG ortho-utm.tif ortho-lambert.tif</pre>
+  <p>(<code>-of COG</code>: a Cloud Optimized GeoTIFF, tiled, with its overviews, §65.) render2d's warning gives that command, with the map's system already filled in.</p>
+  <p><strong>When it will come back.</strong> When rasters in another system become everyday material: satellite imagery (Sentinel-2's images are delivered in UTM zones, Brussels in zone 31N, EPSG:32631), or OpenStreetMap's tiles (Web Mercator) under a Lambert map. The design is ready:</p>
+  <ul>
+    <li><strong>A warped VRT</strong> (<code>GDALCreateWarpedVRT</code>): the file, wrapped at opening in a virtual dataset that already presents itself in the map's system. Nothing is computed in advance; each window read is warped on demand. The raster reader of §65 and §66 (the view's window, the overview, the image laid down) would read it exactly as a file: the same principle as for vectors, converted as they are read, the rest unchanged.</li>
+    <li>To check with numbers before: that the warped VRT uses the source's overviews (otherwise a view of the whole Region reads every pixel); that the corners left empty by a turned image stay transparent, not black; the resampling, chosen in the style (<code>raster: {resampling: near}</code>).</li>
+    <li>Then OpenStreetMap's tiles through GDAL's WMS driver (§71): the same path, plus the tile cache and OSM's usage rules.</li>
   </ul>
   <p>editor2d follows: the project's <code>crs:</code> key, the status bar's coordinates in the map's system, and a "Map system" choice in the View menu.</p>
+
+  <h3>The catalogue, for editor2d's dialog</h3>
+  <p>To choose a system among all those PROJ knows, render2d reads its register once (<code>projectedCatalog</code>, with PROJ's own <code>proj_get_crs_info_list_from_database</code>): the projected systems of EPSG that are not deprecated, <strong>5,271</strong> with PROJ 9.4, each with its name, its area of use and that area's rectangle in degrees. <code>searchCatalog</code> finds them by words ("faroe": 16) or by place: those whose rectangle contains a point, the smallest first. Around Tórshavn (6.7716° W, 62.0107° N): 53, the five made for the Faroe Islands first, among them EPSG:5316, ETRS89 / Faroe TM, where Tórshavn is at X = 211,963.5, Y = 878,123.8. <code>toLonLat</code> gives the map's centre in degrees for that. The dialog itself is described in editor2d's notes (§70).</p>
 </section>
 
 <!-- ============================================================== -->
@@ -2817,7 +2854,15 @@ map: EPSG:31370 (BD72 / Belgian Lambert 72), 1200x960 px, 0.417 m/px, scale 1:14
   <p>A downloaded GeoPackage does not always carry its index. To check: <code>ogrinfo file.gpkg -sql "SELECT table_name FROM gpkg_extensions WHERE extension_name = 'gpkg_rtree_index'"</code>. To add it in place: <code>ogrinfo file.gpkg -sql "SELECT CreateSpatialIndex('layer', 'geom')"</code>. Or, as here, cut out the area of interest with <code>ogr2ogr</code>: smaller, and indexed.</p>
   </div>
 
-  <h3>4b-2: OSM tiles under the map</h3>
+  <h3>Styles for Geofabrik's layers</h3>
+  <p>OpenStreetMap has no YSLD: the map of osm.org is drawn by <em>openstreetmap-carto</em>, written in CartoCSS for Mapnik. <code>styles/osm/</code> holds our own, for Geofabrik's schema (one column <code>fclass</code>), in carto's colours, so that the map is recognised:</p>
+  <ul>
+    <li><code>osm-roads.yaml</code>: 28 values of <code>fclass</code> in the Region (from 66,214 <code>footway</code> to 4 <code>unknown</code>), grouped into nine road classes and four kinds of path. <strong>Four passes</strong> (§25): the dashed paths underneath, then every casing, then the fills of the small roads, then those of the big ones, so that the rue Royale crosses a side street cleanly. Three scale bands: near (to 1:5,000: paths, service roads, wide casings), middle (to 1:25,000: narrower, no paths), far (only motorways to secondary roads, one line).</li>
+    <li><code>osm-buildings.yaml</code>: carto's beige, a thin outline near, the fill alone in the middle, nothing far.</li>
+    <li><code>viewer2d/viewer.osm.example.yaml</code>: a hybrid map for viewer2d, UrbIS in Lambert and OSM in degrees. viewer2d's Leaflet map is a plain plane (<code>L.CRS.Simple</code>, its notes §4): any system in metres fits it. viewer2d 1.3 and tiles2d 1.2 read <code>crs:</code> (Lambert 72 by default) and always pass it to render2d with <code>--crs</code>: an OSM layer alone, in degrees, would otherwise make render2d choose Web Mercator under a page that expects something else. Tiles drawn in another system go to another cache folder (the system is part of the key).</li>
+  </ul>
+
+  <h3>4b-2: OSM tiles under the map <span class="tag">postponed, §70</span></h3>
   <p>GDAL reads a tile server as one immense raster, described by a small XML file (its "WMS" driver, in TMS mode). For render2d, it is a layer like a GeoTIFF: once warping exists, it costs nothing more.</p>
 <pre>&lt;GDAL_WMS&gt;
   &lt;Service name="TMS"&gt;&lt;ServerUrl&gt;https://tile.openstreetmap.org/${z}/${x}/${y}.png&lt;/ServerUrl&gt;&lt;/Service&gt;
@@ -2910,7 +2955,7 @@ map: EPSG:31370 (BD72 / Belgian Lambert 72), 1200x960 px, 0.417 m/px, scale 1:14
     <li>Step 3n ✓ — Classifying on the command line (§63): <code>--categorize</code>, <code>--graduate</code>, <code>--write-style</code>; <code>classify()</code>, the same function for editor2d and render2d.</li>
     <li>Step 3o ✓ — Selecting by attributes (§64): <code>Map::queryWhere</code>, <code>GdalLayer::forFids</code>, <code>--where</code>. Client: editor2d's selection by expression (4a).</li>
     <li>Step 4a ✓ — Rasters (§65, §66): reading the view's window with its overviews, bands into ARGB32, transparent nodata, the <code>raster</code> symbolizer and its opacity. Same coordinate system as the map. Client: editor2d's raster layers.</li>
-    <li class="now">Step 4b — On-the-fly reprojection (PROJ), §69 to §71: 4b-1 (0.4.5) vectors, <code>--crs</code>, the conversion per layer; 4b-2 (0.4.6) rasters by warping, then OpenStreetMap's tiles. Tested on OpenStreetMap against UrbIS.</li>
+    <li>Step 4b — On-the-fly reprojection (PROJ), §69 to §71: 4b-1 (0.4.5) ✓ vectors, <code>--crs</code>, <code>crs:</code> of the map and of a layer, the conversion per layer, the catalogue for editor2d; tested on OpenStreetMap against UrbIS. 4b-2, rasters by warping and OpenStreetMap's tiles: <strong>postponed</strong> (§70: <code>gdalwarp</code> once meanwhile; back with satellite imagery or OSM tiles).</li>
     <li>Later, after reprojection and PostGIS, once editor2d and viewer2d are rich enough: <strong>render2d as a server</strong>, a program that stays up with its map open and answers over HTTP (<code>/map</code>, <code>/tiles/z/x/y</code>, <code>/query</code>, <code>/legend</code>, a style changed live) and as a <strong>standard WMS</strong>, readable by QGIS and any GIS client. The favoured option: <code>render2d --serve</code>, a process that stays up with its map open and talks through a pipe (stdin/stdout), one JSON line per request and per answer, the image as bytes right after, with the vocabulary of editor2d's commands (<code>map.render</code>, <code>layer.add</code>…). In front of it, FastAPI (or viewer2d) keeps a small pool of these processes: a GDAL crash kills only one, they draw in parallel. The other paths stay open: an HTTP server in C++ inside render2d, or render2d as a Python module (pybind11) if every millisecond counts. Then, real time: telling the server an area has changed, redrawing, invalidating the tiles.</li>
     <li>For the map built in editor2d (its notes, §31 to §34): describing the format itself (properties, types, default values, geometries concerned) for the legend dialog and the future API; reading a field's distinct values, minimum and maximum.</li>
     <li>Alongside, in a separate project: <strong>the test viewer <code>viewer2d</code></strong> (NiceGUI + Leaflet, in Lambert 72), which calls <code>render2d</code> on the command line at every map move. ✓</li>
@@ -2920,7 +2965,7 @@ map: EPSG:31370 (BD72 / Belgian Lambert 72), 1200x960 px, 0.417 m/px, scale 1:14
     <li>Step 7 — Vector tiles (MVT): the same reading, clipping and simplification steps, an MVT encoder next to the canvas, and the translation of YSLD into a MapLibre style.</li>
   </ol>
   <p class="muted">The "style" and "reprojection" steps were swapped after the first rendering of Brussels: all the test data are in Lambert 72, and the most visible need was style (outlines wider than the buildings at small scale).</p>
-  <p class="muted">Versions follow this roadmap: <code>0.&lt;step&gt;.&lt;sub-step&gt;</code>, so 0.3.4 for step 3d, 0.3.5 for step 3e, 0.3.6 for step 3f, 0.3.7 for step 3g, 0.3.8 for step 3h, 0.3.9 for step 3i, 0.3.10 for step 3j, 0.3.11 for step 3k, 0.3.12 for step 3l, 0.3.13 for step 3m, 0.3.14 for step 3n (0.3.15: scale bands; 0.3.16: reclassifying), 0.3.17 for step 3o, 0.4.0 for step 4a (0.4.1: <code>listLayers</code>; 0.4.2: the session password; 0.4.3: tables without geometry; for editor2d; 0.4.4: the data beside the executable, for the Windows zip, §68), 0.4.5 for step 4b-1 (vectors reprojected, §70). <code>render2d --version</code> shows it, with the build date and the GDAL and Cairo versions, and the report starts with it: a forgotten executable is spotted immediately.</p>
+  <p class="muted">Versions follow this roadmap: <code>0.&lt;step&gt;.&lt;sub-step&gt;</code>, so 0.3.4 for step 3d, 0.3.5 for step 3e, 0.3.6 for step 3f, 0.3.7 for step 3g, 0.3.8 for step 3h, 0.3.9 for step 3i, 0.3.10 for step 3j, 0.3.11 for step 3k, 0.3.12 for step 3l, 0.3.13 for step 3m, 0.3.14 for step 3n (0.3.15: scale bands; 0.3.16: reclassifying), 0.3.17 for step 3o, 0.4.0 for step 4a (0.4.1: <code>listLayers</code>; 0.4.2: the session password; 0.4.3: tables without geometry; for editor2d; 0.4.4: the data beside the executable, for the Windows zip, §68), 0.4.5 for step 4b-1 (vectors reprojected, §70), 0.4.6: the PostGIS password looked for by render2d (§67). <code>render2d --version</code> shows it, with the build date and the GDAL and Cairo versions, and the report starts with it: a forgotten executable is spotted immediately.</p>
   <p class="muted">Desirable, without a date: label collisions and labels straddling tile edges.</p>
   <p class="muted">Then: <code>profile</code> and <code>autostyle</code>, then a custom engine (AGG or Blend2D) behind the same canvas.</p>
 </section>

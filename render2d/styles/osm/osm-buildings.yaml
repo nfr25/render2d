@@ -1,0 +1,14 @@
+# OpenStreetMap buildings (Geofabrik: gis_osm_buildings_a_free), in the
+# colours of openstreetmap-carto. Near: a fill and a thin outline; middle:
+# the fill only; far (beyond 1:25,000): not drawn. render2d notes §71.
+name: osm-buildings
+feature-styles:
+- rules:
+  - name: near
+    scale: [min, 5000]
+    symbolizers:
+    - polygon: {fill-color: '#D9D0C9', stroke-color: '#C4B6AB', stroke-width: 0.6}
+  - name: middle
+    scale: [5000, 25000]
+    symbolizers:
+    - polygon: {fill-color: '#D9D0C9'}

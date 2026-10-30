@@ -47,7 +47,8 @@ start:
         assert cmd[0].endswith('render2d.exe')
         assert cmd[1] == '--config' and cmd[2] == cfg.path and cmd[2].endswith('viewer.yaml')
         assert Path(cmd[2]).is_absolute()
-        assert cmd[3] == '--bbox' and cmd[4:8] == ['150000.000', '160000.000', '155000.000', '165000.000']
+        assert cmd[3:5] == ['--crs', 'EPSG:31370']   # the page is in Lambert 72 (render2d §70)
+        assert cmd[5] == '--bbox' and cmd[6:10] == ['150000.000', '160000.000', '155000.000', '165000.000']
         assert cmd[-4:] == ['--size', '1000x800', '-o', 'out.png']
         assert not any(a.endswith('parcelles.shp') for a in cmd)   # no more layer by layer
 
@@ -103,8 +104,33 @@ start:
         assert sum('unknown' in w for w in cfg.warnings) == 2   # 'layer', 'stile': typos, said
     assert parse_version('render2d 0.3.8 (step 3h: --config), built Oct 22 2026') == (0, 3, 8)
     assert parse_version('render2d 0.3.7 (step 3g: querying a zone)') < MIN_RENDER2D
-    assert parse_version('render2d 0.4.0') > MIN_RENDER2D
+    assert parse_version('render2d 0.4.4') < MIN_RENDER2D   # no --crs yet
+    assert parse_version('render2d 0.4.5') == MIN_RENDER2D
     assert parse_version('something else') is None
+
+
+def test_crs():
+    """crs: the map's system, any in metres (render2d §70), Lambert 72 by default;
+    crs: of a layer, its own system. render2d is always told (--crs)."""
+    with tempfile.TemporaryDirectory() as t:
+        tmp = Path(t)
+        body = """
+render2d: {exe}
+%s
+layers:
+  - source: {d}/parcelles.shp
+    crs: EPSG:31300
+start:
+  bbox: [150000, 160000, 155000, 165000]
+"""
+        cfg = config.load(make_config(tmp, body % ''))
+        assert cfg.crs == 'EPSG:31370' and cfg.layers[0].crs == 'EPSG:31300'
+        assert not any('crs' in w for w in cfg.warnings)
+        cmd = build_command(cfg, (150000, 160000, 155000, 165000), 100, 100, 'o.png')
+        assert cmd[cmd.index('--crs') + 1] == 'EPSG:31370'
+        cfg = config.load(make_config(tmp, body % 'crs: EPSG:5316'))   # the Faroe Islands
+        cmd = build_command(cfg, (150000, 160000, 155000, 165000), 100, 100, 'o.png')
+        assert cmd[cmd.index('--crs') + 1] == 'EPSG:5316'
 
 
 def test_errors():

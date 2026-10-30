@@ -3,6 +3,7 @@
 // the Grand-Place in three systems, the axis order, the filter's rectangle,
 // and a map whose layers are in different systems.
 
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -188,14 +189,109 @@ void testNotReallyDegrees() {
     CHECK(said);
 }
 
+// §70: crs: per layer, for a file that says none (or a wrong one).
+void testDeclared() {
+    const std::string lambert = write("r2d_rp_lambert.geojson", kLambert);
+    // The same square, written in Lambert metres but without "crs": GDAL says
+    // EPSG:4326 (not believed: assumed the map's, no conversion).
+    const std::string noCrs = write("r2d_rp_square_nocrs.geojson",
+        R"({"type":"FeatureCollection","features":[{"type":"Feature","properties":{},)"
+        R"("geometry":{"type":"Polygon","coordinates":[[[148800,170680],[148890,170680],[148890,170740],)"
+        R"([148800,170740],[148800,170680]]]}}]})");
+    // A Mercator map: the undeclared one is NOT converted (wrong place) ...
+    Map wrong = Map::open({{lambert}, {noCrs}}, 1.0, crs("EPSG:3857"));
+    CHECK(wrong.layerReprojection(1).empty());
+    // ... declared crs: EPSG:31370, it is.
+    LayerSpec declared(noCrs);
+    declared.crs = "EPSG:31370";
+    Map right = Map::open({{lambert}, declared}, 1.0, crs("EPSG:3857"));
+    CHECK(right.layerCrs(1).epsg == 31370);
+    CHECK(right.layerReprojection(1).find("EPSG:31370 -> EPSG:3857") == 0);
+    const auto a = right.layerExtent(0), b = right.layerExtent(1);
+    CHECK(a && b);
+    if (a && b) {
+        CHECK_NEAR(a->xmin, b->xmin, 0.001);
+        CHECK_NEAR(a->ymax, b->ymax, 0.001);
+    }
+    // An unreadable one: said, the file's own is used.
+    LayerSpec bad(noCrs);
+    bad.crs = "EPSG:not-a-code";
+    Map m = Map::open({bad});
+    bool said = false;
+    for (const auto& w : m.warnings()) said = said || w.find("crs:") != std::string::npos;
+    CHECK(said);
+}
+
 void testConfig() {
     const std::string lambert = write("r2d_rp_lambert.geojson", kLambert);
     const std::string path = write("r2d_rp_map.yaml", "crs: EPSG:3857\nlayers:\n  - source: " + lambert + "\n");
     const ConfigResult r = loadConfig(path);
     CHECK(r.ok && r.config.crs == "EPSG:3857");
     CHECK(configText(r.config, path).find("crs: 'EPSG:3857'") != std::string::npos);
+    const std::string withLayerCrs = write("r2d_rp_map2.yaml",
+        "layers:\n  - source: " + lambert + "\n    crs: EPSG:31300\n");
+    const ConfigResult lc = loadConfig(withLayerCrs);
+    CHECK(lc.ok && lc.config.layers.size() == 1 && lc.config.layers[0].crs == "EPSG:31300");
+    CHECK(configText(lc.config, withLayerCrs).find("crs: 'EPSG:31300'") != std::string::npos);
     const ConfigResult bad = loadConfig(write("r2d_rp_bad.yaml", "crs: EPSG:4326\nlayers:\n  - source: x.fgb\n"));
     CHECK(!bad.ok && bad.error.find("degrees") != std::string::npos);
+}
+
+// The catalogue (editor2d's Map system dialog): the Faroe Islands and Brussels.
+void testCatalog() {
+    const auto& all = projectedCatalog();
+    std::printf("     %zu projected systems in the catalogue\n", all.size());
+    CHECK(all.size() > 4000);
+
+    const auto faroe = searchCatalog(all, "FAROE", std::nullopt);
+    bool tm = false;
+    for (const CrsEntry* e : faroe) tm = tm || e->code == "EPSG:5316";
+    CHECK(tm);   // ETRS89 / Faroe TM, found by a word, any case
+
+    const auto utm = searchCatalog(all, "etrs89 utm 29n", std::nullopt);
+    bool zone29 = false;
+    for (const CrsEntry* e : utm) zone29 = zone29 || e->code == "EPSG:25829";
+    CHECK(zone29 && utm.size() <= 3);   // 25829, and its (N-E) twin 3041
+
+    // Near Torshavn: only systems made for that place, the most local first.
+    const Point torshavn{-6.7716, 62.0107};
+    const auto near = searchCatalog(all, "", torshavn);
+    CHECK(near.size() > 10 && near.size() < 200);
+    bool local = !near.empty() && near.front()->name.find("Faroe") != std::string::npos;
+    CHECK(local);
+    bool belgian = false;
+    for (const CrsEntry* e : near) belgian = belgian || e->code == "EPSG:31370";
+    CHECK(!belgian);
+
+    const CrsEntry* lambert = catalogEntry(crs("EPSG:31370"));
+    CHECK(lambert && lambert->area.find("Belgium") != std::string::npos);
+    CHECK(lambert && lambert->contains(4.3524, 50.8468) && !lambert->contains(-6.7716, 62.0107));
+
+    // Torshavn in the Faroe TM, and back to degrees.
+    std::string error;
+    auto t = CrsTransform::create(wgs84(), crs("EPSG:5316"), std::nullopt, error);
+    CHECK(t != nullptr);
+    if (t) {
+        Geometry g;
+        g.type = GeomType::Point;
+        g.points.push_back(torshavn);
+        g.closePart(0);
+        CHECK(t->forward(g));
+        CHECK_NEAR(g.points[0].x, 211963.5, 1.0);
+        CHECK_NEAR(g.points[0].y, 878123.8, 1.0);
+        const auto back = toLonLat(crs("EPSG:5316"), g.points[0]);
+        CHECK(back.has_value());
+        if (back) {
+            CHECK_NEAR(back->x, torshavn.x, 1e-6);
+            CHECK_NEAR(back->y, torshavn.y, 1e-6);
+        }
+    }
+    const auto gp = toLonLat(crs("EPSG:31370"), {148845.6, 170708.2});
+    CHECK(gp.has_value());
+    if (gp) {
+        CHECK_NEAR(gp->x, 4.35236, 1e-5);
+        CHECK_NEAR(gp->y, 50.846777, 1e-5);
+    }
 }
 
 } // namespace
@@ -207,5 +303,7 @@ int main() {
     testMap();
     testNotReallyDegrees();
     testConfig();
+    testDeclared();
+    testCatalog();
     return check::summary();
 }

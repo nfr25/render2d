@@ -34,7 +34,7 @@ the code follows them.
 | — | Test viewer `viewer2d` (NiceGUI + Leaflet), a separate project calling `render2d` | done |
 | 4a | Raster layers (GeoTIFF, world files): the view's window with overviews, RGB / RGBA / palette / grey, nodata, the `raster` symbolizer and its opacity | done |
 | 4b-1 | Reprojection on the fly of vector layers (PROJ): `--crs`, `crs:` in the config, each layer converted to the map's system | done |
-| 4b-2 | Reprojection of rasters (warping), OpenStreetMap tiles | next |
+| 4b-2 | Reprojection of rasters (warping), OpenStreetMap tiles. Meanwhile: `gdalwarp -t_srs EPSG:31370 -r bilinear -of COG in.tif out.tif` once | postponed |
 | 4c | WMS / WMTS / WFS sources | |
 | — | Clipping, simplification | |
 | 5 | Full command line, JSON warnings | |
@@ -125,6 +125,7 @@ render2d SOURCE [SOURCE ...] [options]
 | `SOURCE` | A file or a GDAL connection string: a vector layer, or a raster (GeoTIFF...; step 4a). `SOURCE::layer` picks a layer, otherwise the first one is used. Layers are drawn in the order given, the first at the bottom. |
 | `--style FILE.yaml` | YSLD style for the `SOURCE` just before it. Without it, a built-in style chosen from the geometry type. |
 | `--crs CRS` | The map's coordinate system, in metres: `EPSG:31370`, `EPSG:3857`, a UTM zone... Default: `crs:` of `--config`, else the first layer's (`EPSG:3857` if that one is in degrees). A layer in another system is converted as it is read; the report says how (notes §69 to §71). |
+| `--layer-crs CRS` | The system of the SOURCE just before (as `--style`), when its file says none or a wrong one: `EPSG:31300`, `EPSG:4326`... The file is not changed. In a config file: `crs:` on the layer. |
 | `--bbox XMIN YMIN XMAX YMAX` | Area to draw, in the map's coordinate system. Default: total extent of the layers. |
 | `--size W` or `--size WxH` | Image size. Default: 1000 wide, height following the shape of the area. If both are given and the shapes differ, the area is widened so that pixels stay square. |
 | `--background RRGGBB` or `none` | Background colour, default `FFFFFF`. `none` gives a transparent image. |

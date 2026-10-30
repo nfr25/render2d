@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from .config import Layer
+from .config import DEFAULT_CRS, Layer
 
 # A shapefile is several files: any of them changing changes the map.
 _COMPANIONS = ('.shp', '.shx', '.dbf', '.prj', '.cpg', '.qix')
@@ -49,4 +49,8 @@ def layer_key(layer: Layer, render2d: str) -> str:
             h.update(b'missing-style')
     else:
         h.update(b'default-style')
+    # Another system, other tiles: 17/x/y covers other ground in Mercator.
+    # Only when not the default, so that the Lambert pyramids already cut keep their key.
+    if layer.map_crs != DEFAULT_CRS or layer.crs:
+        h.update(f'crs {layer.map_crs} {layer.crs or ""}'.encode())
     return h.hexdigest()[:12]

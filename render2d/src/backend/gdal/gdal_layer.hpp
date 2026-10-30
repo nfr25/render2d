@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -62,9 +63,35 @@ bool zoneFromWkt(const std::string& wkt, std::vector<Point>& ring, std::string& 
 void setSessionPassword(const std::string& connection, const std::string& password);
 
 // What GDAL is given for `source`: the source, plus " password='...'" when
-// a session password is known for it. For the readers of this folder, and
-// for the tests.
+// a password is found for it: typed this session (above), else in libpq's
+// own places, looked at by render2d itself (findPgPassword). For the readers
+// of this folder, and for the tests.
 std::string withSessionPassword(const std::string& source);
+
+// §67: the password of a "PG:" connection that carries none, where libpq
+// itself would look: PGPASSWORD, then the password file (PGPASSFILE, else
+// %APPDATA%\postgresql\pgpass.conf on Windows, ~/.pgpass elsewhere), its
+// first line matching host:port:database:user ('*' matches anything).
+// render2d looks itself: libpq.dll did not always (30 October, Windows).
+struct PasswordSearch {
+    std::optional<std::string> password;   // found, or not
+    std::string                where;      // "PGPASSWORD", "C:/.../pgpass.conf line 3"
+    std::vector<std::string>   tried;      // what was looked at, for the message when not found
+};
+PasswordSearch findPgPassword(const std::string& connection);
+
+// The fields of a libpq connection string ("PG:host=a dbname='b c'"), unquoted.
+std::map<std::string, std::string> conninfoFields(const std::string& connection);
+
+// The password of the first line of a pgpass text matching these four
+// values ('*' in the file matches anything; "\:" is a colon), or nothing.
+std::optional<std::string> pgpassMatch(const std::string& text, const std::string& host, const std::string& port,
+                                       const std::string& database, const std::string& user);
+
+// "file.gpkg::layer" -> {"file.gpkg", "layer"}; no "::" -> {source, ""}. A
+// "PG:" connection never ends with ':': extra colons ("...::::table") are
+// dropped, so that a doubled separator still opens.
+std::pair<std::string, std::string> splitSource(const std::string& source);
 
 // The vector layers of a source (a GeoPackage, a database): name, type,
 // CRS, number of features when GDAL knows it cheaply (-1 otherwise: never a

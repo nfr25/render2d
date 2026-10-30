@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""The tile grid: z/x/y <-> envelope in map units (Lambert metres).
+"""The tile grid: z/x/y <-> envelope in map units (the metres of the map's
+system: Lambert 72 by default, render2d §70).
 
 Same convention as Leaflet's L.CRS.Simple, so the pyramids can be shown by a
 plain L.tileLayer (viewer2d notions, chapter 10):

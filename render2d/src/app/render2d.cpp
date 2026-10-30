@@ -44,6 +44,8 @@ const char* kUsage =
     "                         SOURCE::layer picks a layer\n"
     "                         (default: the first one). Drawn in order, first at the bottom.\n"
     "  --style FILE.yaml      YSLD style for the SOURCE just before (default: built-in style)\n"
+    "  --layer-crs CRS        the system of the SOURCE just before, when its file says none or\n"
+    "                         a wrong one (EPSG:31300, EPSG:4326...): the file is not changed\n"
     "  --crs CRS              the map's coordinate system, in metres: EPSG:31370, EPSG:3857...\n"
     "                         (default: crs: of --config, else the first layer's; EPSG:3857 if\n"
     "                         that one is in degrees). Layers in another are converted (§70)\n"
@@ -76,6 +78,7 @@ const char* kUsage =
 struct SourceSpec {
     std::string                source;
     std::optional<std::string> style;   // YSLD file, from --style
+    std::string                crs;     // --layer-crs (§70)
 };
 
 struct Options {
@@ -165,6 +168,13 @@ bool parseArgs(int argc, char** argv, Options& o) {
                 return false;
             }
             o.sources.back().style = argv[++i];
+        } else if (a == "--layer-crs") {
+            if (!need(1)) return false;
+            if (o.sources.empty()) {
+                std::fprintf(stderr, "--layer-crs must follow the SOURCE it applies to\n");
+                return false;
+            }
+            o.sources.back().crs = argv[++i];
         } else if (a == "-o") {
             if (!need(1)) return false;
             o.output = argv[++i];
@@ -240,7 +250,7 @@ bool parseArgs(int argc, char** argv, Options& o) {
             std::fprintf(stderr, "unknown option '%s'\n", a.c_str());
             return false;
         } else {
-            o.sources.push_back({a, std::nullopt});
+            o.sources.push_back({a, std::nullopt, {}});
         }
     }
     if (o.sources.empty() && !o.config) {
@@ -269,11 +279,8 @@ bool parseArgs(int argc, char** argv, Options& o) {
 std::string classifyLastSource(const Options& opt, int index) {
     const SourceSpec& src = opt.sources.back();
     const ClassifySettings& set = *opt.classify;
-    std::string file = src.source, layerName, error;
-    if (const auto sep = src.source.rfind("::"); sep != std::string::npos) {
-        file      = src.source.substr(0, sep);
-        layerName = src.source.substr(sep + 2);
-    }
+    const auto [file, layerName] = splitSource(src.source);
+    std::string error;
     auto layer = GdalLayer::open(file, layerName, error);
     if (!layer) {
         std::fprintf(stderr, "error: %s\n", error.c_str());
@@ -404,7 +411,11 @@ int main(int argc, char** argv) {
         if (crsText.empty()) crsText = c.config.crs;
         configLines.push_back("config: " + std::filesystem::absolute(c.config.path).lexically_normal().generic_string());
     }
-    for (const SourceSpec& s : opt.sources) specs.push_back({s.source, s.style});
+    for (const SourceSpec& s : opt.sources) {
+        LayerSpec spec(s.source, s.style);
+        spec.crs = s.crs;   // §70
+        specs.push_back(std::move(spec));
+    }
     // §57: the report says what was really read, paths resolved.
     if (opt.config) {
         for (std::size_t i = 0; i < specs.size(); ++i) {

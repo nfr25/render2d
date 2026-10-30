@@ -57,6 +57,13 @@ def render_command(render2d: str, layer: Layer, bbox: grid.Envelope, size: int, 
     cmd = [render2d, layer.source]
     if layer.style:
         cmd += ['--style', layer.style]
+    # The grid is in the metres of the map's system (Lambert 72 by default):
+    # render2d is always told which, and converts a layer in another (an
+    # OpenStreetMap extract in degrees). Without it, a layer in degrees alone
+    # would make render2d choose Web Mercator (render2d §70). render2d 0.4.5.
+    if layer.crs:
+        cmd += ['--layer-crs', layer.crs]
+    cmd += ['--crs', layer.map_crs]
     cmd += ['--bbox', *(f'{v:.6f}' for v in bbox), '--size', f'{size}x{size}',
             '--background', 'none', '-o', out]
     return cmd

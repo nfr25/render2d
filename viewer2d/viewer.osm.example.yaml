@@ -1,0 +1,46 @@
+# viewer2d on a hybrid map (render2d notes §70, §71), an example to copy:
+#     copy viewer.osm.example.yaml viewer.osm.yaml      (then adapt the paths)
+#     python -m viewer2d --config viewer.osm.yaml
+#
+# UrbIS in Lambert 72 and OpenStreetMap in degrees, on one map. The map has
+# ONE system (crs:); every layer in another is converted to it as it is read.
+#
+# The OSM data: Geofabrik's extract for Belgium, cut to the Region with its
+# spatial index (ogr2ogr creates it; destination first, then the source):
+#     ogr2ogr -spat 4.23 50.75 4.50 50.93 osm-brussels.gpkg belgium.gpkg ^
+#             gis_osm_buildings_a_free gis_osm_roads_free
+# © OpenStreetMap contributors, ODbL. UrbIS © Brussels Region.
+
+render2d: ../render2d/build-release/render2d.exe
+
+# The map's system, in metres. Lambert 72 is the default; EPSG:3857 (Web
+# Mercator) or EPSG:5316 (Faroe TM) work too: start: bbox is then in it.
+crs: EPSG:31370
+
+layers:
+  # Lambert 72, as the map: read as it is, no conversion.
+  - source: data/urbis/UrbISBuildings_04000_Buildings.shp
+    style:  ../render2d/styles/batiments.yaml
+    title:  Buildings (UrbIS)
+
+  # Degrees (OGC:CRS84): converted on the fly.
+  - source: data/osm/osm-brussels.gpkg::gis_osm_buildings_a_free
+    style:  ../render2d/styles/osm-outline.yaml
+    title:  Buildings (OSM, red outline)
+    visible: false
+
+  - source: data/osm/osm-brussels.gpkg::gis_osm_roads_free
+    style:  ../render2d/styles/osm/osm-roads.yaml
+    title:  Roads (OSM)
+
+  # A file whose system is missing or wrong (a shapefile without .prj, a
+  # GeoJSON in metres without "crs"): crs: on the LAYER declares it. The
+  # file is not changed; only how it is read.
+  # - source: data/old/plan-1998.shp
+  #   crs:    EPSG:31300
+
+# The Grand-Place and the Mont des Arts, in the map's system (Lambert 72 metres).
+start:
+  bbox: [148300, 170200, 149600, 171200]
+
+max_parallel: 2

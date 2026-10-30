@@ -34,6 +34,8 @@ struct LayerSpec {
     bool                       visible = true;   // from a config file (§57)
     std::string                title;            // a readable name; render2d does not use it
     int                        colour = -1;      // default style's colour; -1 = its position (§58)
+    std::string                crs;              // §70: its system, declared here ("EPSG:31300"), for a file
+                                                 // that says none or a wrong one; "" = the file's
 };
 
 struct LayerReport {
@@ -118,6 +120,7 @@ public:
     const LayerInfo& layerInfo(int i) const;        // as the source says it: extent in ITS CRS
     std::optional<Envelope> layerExtent(int i) const;   // §70: the extent in the map's CRS (Zoom to layer)
     const std::string& layerReprojection(int i) const;  // §70: "EPSG:4326 -> ... by ...", or ""
+    const CrsInfo&     layerCrs(int i) const;           // §70: the declared one (LayerSpec::crs), else the file's
     const std::vector<FieldDef>& layerFields(int i) const;   // the columns of the query's attributes
     bool             visible(int i) const;
     void             setVisible(int i, bool on);

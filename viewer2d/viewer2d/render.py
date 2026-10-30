@@ -27,8 +27,9 @@ MAX_SIDE = 8192   # pixels; larger requests are refused (a typo, not a map)
 RENDER_ENV = {**os.environ, 'OPENBLAS_NUM_THREADS': '1', 'OMP_NUM_THREADS': '1'}
 
 
-# render2d reads viewer.yaml itself since 0.3.8 (--config, notions §11).
-MIN_RENDER2D = (0, 3, 8)
+# render2d reads viewer.yaml itself since 0.3.8 (--config, notions §11), and
+# converts layers in other systems since 0.4.5 (--crs, render2d notes §70).
+MIN_RENDER2D = (0, 4, 5)
 
 
 def parse_version(line: str) -> tuple[int, int, int] | None:
@@ -54,7 +55,7 @@ def check_version(exe: str) -> tuple[bool, str]:
     need = '.'.join(map(str, MIN_RENDER2D))
     if found < MIN_RENDER2D:
         return False, (f'render2d {".".join(map(str, found))} is too old: viewer2d needs {need} or later '
-                       f'(--config). Rebuild it: make release in render2d.')
+                       f'(--config, --crs). Rebuild it: make release in render2d.')
     return True, first
 
 
@@ -62,7 +63,7 @@ def build_command(cfg: Config, bbox: tuple[float, float, float, float],
                   width: int, height: int, output: str, ratio: float = 1.0) -> list[str]:
     """The exact render2d command line: shown in the report, so it can be replayed.
     render2d reads the layers and styles in viewer.yaml itself (§11)."""
-    cmd = [cfg.render2d, '--config', cfg.path]
+    cmd = [cfg.render2d, '--config', cfg.path, '--crs', cfg.crs]   # always said (render2d §70)
     cmd += ['--bbox', *(f'{v:.3f}' for v in bbox), '--size', f'{width}x{height}']
     if ratio != 1.0:   # high-density screen: the image is seen `ratio` times smaller (notions §6)
         cmd += ['--pixel-ratio', f'{ratio:g}']

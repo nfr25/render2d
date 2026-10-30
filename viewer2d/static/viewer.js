@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// viewer2d: Leaflet in Lambert metres (L.CRS.Simple), two modes:
+// viewer2d: Leaflet in the map's metres (L.CRS.Simple: Lambert 72 by default,
+// any system in metres with crs: in viewer.yaml, render2d §70), two modes:
 //   view  - one render2d image per view (notions §4 to §7)
 //   tiles - the pyramids of the shared cache, filled on demand (notions §10)
 'use strict';

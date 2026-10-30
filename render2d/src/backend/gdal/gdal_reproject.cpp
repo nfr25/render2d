@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "backend/gdal/gdal_reproject.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <cstdio>
+#include <mutex>
+#include <sstream>
 
 #include <cpl_conv.h>
 #include <ogr_spatialref.h>
@@ -71,6 +75,122 @@ std::string chosenOperation(const CrsInfo& from, const CrsInfo& to, const std::o
 }
 
 } // namespace
+
+// ---- the catalogue --------------------------------------------------------------
+
+bool CrsEntry::contains(double lon, double lat) const {
+    if (!hasArea || lat < south || lat > north) return false;
+    return west <= east ? (lon >= west && lon <= east) : (lon >= west || lon <= east);
+}
+
+double CrsEntry::size() const {
+    if (!hasArea) return 1e9;
+    const double w = west <= east ? east - west : 360.0 - (west - east);
+    return w * (north - south);
+}
+
+namespace {
+
+int codeNumber(const std::string& code) {
+    const auto colon = code.find(':');
+    return colon == std::string::npos ? 0 : std::atoi(code.c_str() + colon + 1);
+}
+
+std::string lower(std::string s) {
+    for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return s;
+}
+
+std::vector<CrsEntry> readCatalog() {
+    std::vector<CrsEntry> out;
+    PJ_CONTEXT* ctx = proj_context_create();
+    if (!ctx) return out;
+    if (const std::string& dir = projDataFolder(); !dir.empty()) {
+        const char* paths[] = {dir.c_str()};
+        proj_context_set_search_paths(ctx, 1, paths);
+    }
+    PROJ_CRS_LIST_PARAMETERS* params = proj_get_crs_list_parameters_create();
+    PJ_TYPE type = PJ_TYPE_PROJECTED_CRS;
+    params->types            = &type;
+    params->typesCount       = 1;
+    params->allow_deprecated = 0;
+    int n = 0;
+    PROJ_CRS_INFO** list = proj_get_crs_info_list_from_database(ctx, "EPSG", params, &n);
+    for (int i = 0; list && i < n; ++i) {
+        const PROJ_CRS_INFO* c = list[i];
+        CrsEntry e;
+        e.code    = std::string(c->auth_name) + ":" + c->code;
+        e.name    = c->name ? c->name : "";
+        e.area    = c->area_name ? c->area_name : "";
+        e.hasArea = c->bbox_valid != 0;
+        e.west    = c->west_lon_degree;
+        e.south   = c->south_lat_degree;
+        e.east    = c->east_lon_degree;
+        e.north   = c->north_lat_degree;
+        out.push_back(std::move(e));
+    }
+    proj_crs_info_list_destroy(list);
+    proj_get_crs_list_parameters_destroy(params);
+    proj_context_destroy(ctx);
+    std::sort(out.begin(), out.end(),
+              [](const CrsEntry& a, const CrsEntry& b) { return codeNumber(a.code) < codeNumber(b.code); });
+    return out;
+}
+
+} // namespace
+
+const std::vector<CrsEntry>& projectedCatalog() {
+    static std::once_flag once;
+    static std::vector<CrsEntry> catalog;
+    std::call_once(once, [] {
+        gdalInit();   // PROJ's folder beside the executable (§68)
+        catalog = readCatalog();
+    });
+    return catalog;
+}
+
+std::vector<const CrsEntry*> searchCatalog(const std::vector<CrsEntry>& catalog, const std::string& words,
+                                           const std::optional<Point>& near, std::size_t limit) {
+    std::vector<std::string> wanted;
+    std::istringstream in(lower(words));
+    for (std::string w; in >> w;) wanted.push_back(w);
+
+    std::vector<const CrsEntry*> out;
+    for (const CrsEntry& e : catalog) {
+        if (near && !e.contains(near->x, near->y)) continue;
+        const std::string text = lower(e.code + " " + e.name + " " + e.area);
+        bool all = true;
+        for (const std::string& w : wanted)
+            if (text.find(w) == std::string::npos) { all = false; break; }
+        if (all) out.push_back(&e);
+    }
+    if (near)   // the systems made for this place first: the smallest areas
+        std::stable_sort(out.begin(), out.end(), [](const CrsEntry* a, const CrsEntry* b) { return a->size() < b->size(); });
+    if (limit && out.size() > limit) out.resize(limit);
+    return out;
+}
+
+const CrsEntry* catalogEntry(const CrsInfo& crs) {
+    if (crs.epsg == 0) return nullptr;
+    const std::string code = "EPSG:" + std::to_string(crs.epsg);
+    for (const CrsEntry& e : projectedCatalog())
+        if (e.code == code) return &e;
+    return nullptr;
+}
+
+std::optional<Point> toLonLat(const CrsInfo& crs, Point p) {
+    std::string error;
+    const std::optional<CrsInfo> wgs84 = crsFromText("EPSG:4326", error);
+    if (!wgs84 || !crs.known) return std::nullopt;
+    if (sameCrs(crs, *wgs84)) return p;
+    const auto t = CrsTransform::create(crs, *wgs84, std::nullopt, error);
+    Geometry g;
+    g.type = GeomType::Point;
+    g.points.push_back(p);
+    g.closePart(0);
+    if (!t || !t->forward(g)) return std::nullopt;
+    return g.points[0];
+}
 
 std::optional<CrsInfo> crsFromText(const std::string& text, std::string& error) {
     gdalInit();

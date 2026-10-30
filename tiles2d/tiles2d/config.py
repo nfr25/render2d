@@ -6,6 +6,8 @@ describes a map for both tools.
     layers:
       - source: C:/data/parcelles.shp
         style:  C:/.../styles/parcelles.yaml
+        crs:    EPSG:31300                 # optional: the file's system, when it says none
+    crs: EPSG:31370                        # optional: the tiles' system, in metres (default)
     start:
       bbox: [xmin, ymin, xmax, ymax]     # default area for tiles2d
 """
@@ -21,11 +23,17 @@ class ConfigError(Exception):
     """The map file cannot be used."""
 
 
+# The tiles' system when the map file names none: Lambert 72 (render2d §70).
+DEFAULT_CRS = 'EPSG:31370'
+
+
 @dataclass
 class Layer:
     source: str
     style: str | None
-    name: str            # folder name of its pyramid, from the source file name
+    name: str                      # folder name of its pyramid, from the source file name
+    crs: str | None = None         # its system, declared in the map file ("" / None: the file's)
+    map_crs: str = DEFAULT_CRS     # the system the tiles are drawn in (render2d --crs)
 
 
 @dataclass
@@ -33,6 +41,7 @@ class MapConfig:
     render2d: str
     layers: list[Layer]
     bbox: tuple[float, float, float, float] | None
+    crs: str = DEFAULT_CRS
 
 
 def layer_name(source: str, taken: set[str]) -> str:
@@ -61,13 +70,15 @@ def load(path: str | Path) -> MapConfig:
     if not exe or not Path(exe).is_file():
         raise ConfigError(f"'render2d': executable not found: {exe}")
 
+    crs = str(data.get('crs') or DEFAULT_CRS)
     taken: set[str] = set()
     layers = []
     for i, item in enumerate(data.get('layers') or []):
         if not isinstance(item, dict) or 'source' not in item:
             raise ConfigError(f"layers[{i}]: expected 'source' (and optionally 'style')")
         src = str(item['source'])
-        layers.append(Layer(src, str(item['style']) if item.get('style') else None, layer_name(src, taken)))
+        layers.append(Layer(src, str(item['style']) if item.get('style') else None, layer_name(src, taken),
+                            str(item['crs']) if item.get('crs') else None, crs))
     if not layers:
         raise ConfigError("'layers': at least one layer is needed")
 
@@ -79,4 +90,4 @@ def load(path: str | Path) -> MapConfig:
             assert len(bbox) == 4 and bbox[0] < bbox[2] and bbox[1] < bbox[3]
         except (TypeError, ValueError, AssertionError):
             raise ConfigError('start.bbox: expected [xmin, ymin, xmax, ymax]') from None
-    return MapConfig(str(exe), layers, bbox)
+    return MapConfig(str(exe), layers, bbox, crs)

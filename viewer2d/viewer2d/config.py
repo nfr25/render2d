@@ -25,6 +25,7 @@ class Layer:
     style: str | None = None    # YSLD file, or None for the built-in style
     visible: bool = True        # visible: false -> not drawn at start (§11)
     title: str | None = None    # a readable name for the page
+    crs: str | None = None      # its system, declared (render2d §70); None = the file's
 
     def label(self) -> str:
         """The title, or the file name."""
@@ -41,6 +42,7 @@ class Config:
     warnings: list[str] = field(default_factory=list)
     tiles_dir: str | None = None                 # tile cache shared with tiles2d; None = no tile mode
     metatile: int = 4                            # same default as tiles2d
+    crs: str = 'EPSG:31370'                      # the map's system, in metres (render2d §70)
 
 
 def _bbox(value, where: str) -> tuple[float, float, float, float]:
@@ -54,8 +56,15 @@ def _bbox(value, where: str) -> tuple[float, float, float, float]:
 
 
 # viewer.yaml's keys: render2d warns about any other one, so do we.
-KNOWN_KEYS = {'render2d', 'layers', 'start', 'max_parallel', 'tiles', 'metatile'}
-LAYER_KEYS = {'source', 'style', 'visible', 'title'}
+KNOWN_KEYS = {'render2d', 'crs', 'layers', 'start', 'max_parallel', 'tiles', 'metatile'}
+
+# The map's system when viewer.yaml names none. The page's Leaflet map is a
+# plain plane (L.CRS.Simple, §4): any system in metres fits it, Lambert 72
+# by default. render2d is always told which (--crs) and converts the layers
+# in other systems (render2d §70): an OSM extract alone, in degrees, would
+# otherwise make it choose Web Mercator on its own.
+DEFAULT_CRS = 'EPSG:31370'
+LAYER_KEYS = {'source', 'style', 'visible', 'title', 'crs'}
 
 
 def resolve(value: str, folder: Path) -> str:
@@ -92,6 +101,9 @@ def load(path: str | Path) -> Config:
         if key not in KNOWN_KEYS:
             warnings.append(f"'{key}' is unknown, ignored")
 
+    # crs: the map's system (render2d §70), checked by render2d itself.
+    crs = str(data.get('crs') or DEFAULT_CRS).strip()
+
     exe = data.get('render2d')
     if not exe:
         raise ConfigError("'render2d': path to the render2d executable is missing")
@@ -110,7 +122,8 @@ def load(path: str | Path) -> Config:
             raise ConfigError(f"layers[{i}]: 'visible' must be true or false")
         layer = Layer(resolve(str(item['source']), folder),
                       resolve(str(item['style']), folder) if item.get('style') else None,
-                      visible, str(item['title']) if item.get('title') else None)
+                      visible, str(item['title']) if item.get('title') else None,
+                      str(item['crs']) if item.get('crs') else None)
         # Connection strings (PG:...) are not files: only check real paths.
         if not layer.source.startswith('PG:') and not Path(layer.source.split('::')[0]).exists():
             warnings.append(f'layer source not found: {layer.source}')
@@ -122,7 +135,7 @@ def load(path: str | Path) -> Config:
 
     start = data.get('start') or {}
     if 'bbox' not in start:
-        raise ConfigError("'start: bbox:' is needed (the first view, in the data CRS)")
+        raise ConfigError("'start: bbox:' is needed (the first view, in the map's system: crs:)")
     bbox = _bbox(start['bbox'], 'start.bbox')
 
     max_parallel = int(data.get('max_parallel', 2))
@@ -137,4 +150,4 @@ def load(path: str | Path) -> Config:
     if not 1 <= metatile <= 16:
         raise ConfigError("'metatile' must be between 1 and 16")
     return Config(path.resolve().as_posix(), exe, layers, bbox, max(1, max_parallel), warnings,
-                  tiles_dir or None, metatile)
+                  tiles_dir or None, metatile, crs)

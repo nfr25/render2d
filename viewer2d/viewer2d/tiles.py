@@ -44,7 +44,8 @@ class TileService:
         self.root = Path(cfg.tiles_dir)
         self.n = cfg.metatile
         taken: set[str] = set()
-        self.layers = [T2Layer(l.source, l.style, layer_name(l.source, taken)) for l in cfg.layers]
+        # render2d §70: each layer's declared system, and the map's (the tiles' own).
+        self.layers = [T2Layer(l.source, l.style, layer_name(l.source, taken), l.crs, cfg.crs) for l in cfg.layers]
         self.by_name = {l.name: l for l in self.layers}
         self.slots = asyncio.Semaphore(cfg.max_parallel)   # same role as for /render.png
         self.locks: dict[tuple, asyncio.Lock] = {}          # one per metatile being drawn
