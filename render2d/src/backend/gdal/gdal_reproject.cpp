@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <mutex>
 #include <sstream>
@@ -10,6 +11,7 @@
 #include <cpl_conv.h>
 #include <ogr_spatialref.h>
 #include <proj.h>
+#include <geodesic.h>
 
 #include "backend/gdal/gdal_convert.hpp"
 
@@ -321,6 +323,65 @@ std::optional<Envelope> CrsTransform::forwardBounds(const Envelope& layerRect) c
 }
 
 const std::string& CrsTransform::description() const { return impl_->description; }
+
+// ---- GeodesicMeter ----------------------------------------------------------------
+
+GeodesicMeter::GeodesicMeter(const CrsInfo& mapCrs) {
+    std::string error;
+    const std::optional<CrsInfo> wgs84 = crsFromText("EPSG:4326", error);
+    if (wgs84 && mapCrs.known) toDegrees_ = CrsTransform::create(mapCrs, *wgs84, std::nullopt, error);
+}
+
+GeodesicMeter::~GeodesicMeter() = default;
+
+Measurement GeodesicMeter::measure(const std::vector<Point>& points, bool closed) const {
+    Measurement m;
+    const std::size_t n = points.size();
+    if (n < 2) return m;
+
+    // The map's own figures: Pythagoras and the shoelace.
+    for (std::size_t i = 1; i < n; ++i)
+        m.mapLength += std::hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+    if (closed) {
+        m.mapLength += std::hypot(points[0].x - points[n - 1].x, points[0].y - points[n - 1].y);
+        double twice = 0.0;
+        for (std::size_t i = 0; i < n; ++i) {
+            const Point& a = points[i];
+            const Point& b = points[(i + 1) % n];
+            twice += a.x * b.y - b.x * a.y;
+        }
+        m.mapArea = std::abs(twice) / 2.0;
+    }
+    if (!toDegrees_) return m;
+
+    // On the ground: in degrees (longitude first), then on the ellipsoid.
+    Geometry g;
+    g.type   = GeomType::Line;
+    g.points = points;
+    g.closePart(0);
+    if (!toDegrees_->forward(g)) return m;
+    geod_geodesic e;
+    geod_init(&e, 6378137.0, 1.0 / 298.257223563);   // WGS 84
+    if (closed && n >= 3) {
+        std::vector<double> lats(n), lons(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            lons[i] = g.points[i].x;
+            lats[i] = g.points[i].y;
+        }
+        double area = 0.0, perimeter = 0.0;
+        geod_polygonarea(&e, lats.data(), lons.data(), static_cast<int>(n), &area, &perimeter);
+        m.area   = std::abs(area);   // the sign is the turning direction
+        m.length = perimeter;
+    } else {
+        for (std::size_t i = 1; i < n; ++i) {
+            double s = 0.0;
+            geod_inverse(&e, g.points[i - 1].y, g.points[i - 1].x, g.points[i].y, g.points[i].x, &s, nullptr, nullptr);
+            m.length += s;
+        }
+    }
+    m.onGround = true;
+    return m;
+}
 
 // ---- ReprojectedLayer --------------------------------------------------------------
 

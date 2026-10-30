@@ -294,6 +294,38 @@ void testCatalog() {
     }
 }
 
+// editor2d §72: the 1,000 m and the square of the notes.
+void testMeasure() {
+    GeodesicMeter lambert(crs("EPSG:31370"));
+    Measurement m = lambert.measure({{148845.6, 170708.2}, {149845.6, 170708.2}}, false);
+    CHECK(m.onGround);
+    CHECK_NEAR(m.mapLength, 1000.0, 1e-9);
+    CHECK_NEAR(m.length, 1000.041, 0.002);          // Lambert 72 shrinks 4 cm per km in Brussels
+    const std::vector<Point> square{{148845.6, 170708.2}, {148845.6, 170808.2}, {148945.6, 170808.2}, {148945.6, 170708.2}};
+    m = lambert.measure(square, true);
+    CHECK_NEAR(m.mapArea, 10000.0, 1e-6);
+    CHECK_NEAR(m.area, 10000.83, 0.05);
+    CHECK_NEAR(m.length, 400.0165, 0.002);
+
+    // The same square, its corners in Mercator: 2.5 times the map area, the same ground.
+    std::string error;
+    auto toMerc = CrsTransform::create(crs("EPSG:31370"), crs("EPSG:3857"), std::nullopt, error);
+    Geometry g;
+    g.type   = GeomType::Polygon;
+    g.points = square;
+    g.closePart(0);
+    CHECK(toMerc && toMerc->forward(g));
+    GeodesicMeter mercator(crs("EPSG:3857"));
+    m = mercator.measure(g.points, true);
+    CHECK_NEAR(m.mapArea / 10000.0, 2.505, 0.01);
+    CHECK_NEAR(m.area, 10000.83, 0.5);
+
+    // No system: the map's figures only.
+    GeodesicMeter none{CrsInfo{}};
+    m = none.measure({{0, 0}, {3, 4}}, false);
+    CHECK(!m.onGround && m.mapLength == 5.0);
+}
+
 } // namespace
 
 int main() {
@@ -305,5 +337,6 @@ int main() {
     testConfig();
     testDeclared();
     testCatalog();
+    testMeasure();
     return check::summary();
 }

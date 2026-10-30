@@ -82,6 +82,36 @@ const CrsEntry* catalogEntry(const CrsInfo& crs);
 // for the systems made for that place).
 std::optional<Point> toLonLat(const CrsInfo& crs, Point p);
 
+class CrsTransform;
+
+// ---- Measuring (editor2d's Distance and Area tools, its §72) --------------------
+
+struct Measurement {
+    double length = 0.0;        // metres on the ground (the WGS 84 ellipsoid); closed: the perimeter
+    double area   = 0.0;        // square metres on the ground (closed only)
+    double mapLength = 0.0;     // the same in the map's units (planar)
+    double mapArea   = 0.0;
+    bool   onGround  = false;   // false: the map has no known system, only the map's figures
+};
+
+// Lengths and areas measured on the ellipsoid, whatever the map's system:
+// the vertices to degrees, then Karney's geodesics (PROJ's geodesic.h). The
+// conversion is prepared once; one meter per thread.
+class GeodesicMeter {
+public:
+    explicit GeodesicMeter(const CrsInfo& mapCrs);
+    ~GeodesicMeter();
+    GeodesicMeter(const GeodesicMeter&) = delete;
+    GeodesicMeter& operator=(const GeodesicMeter&) = delete;
+
+    // `closed`: a polygon (perimeter and area; the closing side is implied),
+    // else a broken line (its length).
+    Measurement measure(const std::vector<Point>& points, bool closed) const;
+
+private:
+    std::unique_ptr<CrsTransform> toDegrees_;
+};
+
 // One way, from a layer's CRS to the map's. Not thread-safe: one per Map,
 // as the open layers (§46).
 class CrsTransform {

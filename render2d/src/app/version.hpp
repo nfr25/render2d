@@ -6,7 +6,7 @@
 
 namespace r2d {
 
-inline constexpr const char* kVersion = "0.4.6";
-inline constexpr const char* kVersionStep = "step 4b-1 (0.4.6: the PostGIS password looked for where libpq would)";
+inline constexpr const char* kVersion = "0.4.7";
+inline constexpr const char* kVersionStep = "step 4b-1 (0.4.7: measuring on the ellipsoid, for editor2d)";
 
 } // namespace r2d
