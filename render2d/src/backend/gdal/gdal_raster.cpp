@@ -10,6 +10,7 @@
 #include <cpl_conv.h>
 #include <cpl_error.h>
 #include <gdal_priv.h>
+#include <gdal_utils.h>
 
 #include "backend/gdal/gdal_convert.hpp"
 
@@ -55,14 +56,34 @@ std::string shortNumber(double x) {
 } // namespace
 
 struct GdalRaster::Impl {
-    GDALDatasetUniquePtr dataset;
+    GDALDatasetUniquePtr dataset;                      // the file
+    GDALDatasetUniquePtr warpedDs;                     // §72: its warped VRT, or null. Closed first (declared after)
     LayerInfo            info;
+    int                  fileWidth = 0, fileHeight = 0;
+    Kind                 kind = Kind::Grey;
+    bool                 overviews = false;
+    // The grid read() works on: the file's, or the warped VRT's (§72).
     double               gt[6] = {0, 1, 0, 0, 0, 1};   // the geotransform (§65)
     int                  width = 0, height = 0;
-    Kind                 kind = Kind::Grey;
+    Envelope             extent;
     std::vector<Channel> channels;                     // 1 (grey, palette) or 3 (R, G, B)
     GDALRasterBand*      mask = nullptr;               // nodata, alpha band or mask; null = all valid
-    bool                 overviews = false;
+
+    // Reads the grid from `ds`: its geotransform, its bands, its mask. The
+    // stretch (min, max) stays the file's: a warped image shows the same values.
+    void useGrid(GDALDataset& ds) {
+        ds.GetGeoTransform(gt);
+        width  = ds.GetRasterXSize();
+        height = ds.GetRasterYSize();
+        for (std::size_t k = 0; k < channels.size(); ++k) channels[k].band = ds.GetRasterBand(static_cast<int>(k) + 1);
+        // GDAL's mask covers nodata, an alpha band and an internal mask alike
+        // (255 = seen, 0 = transparent): the warped VRT's alpha band too.
+        GDALRasterBand* b1 = ds.GetRasterBand(1);
+        mask = (b1->GetMaskFlags() & GMF_ALL_VALID) ? nullptr : b1->GetMaskBand();
+        const double xa = gt[0], xb = gt[0] + width * gt[1];
+        const double ya = gt[3], yb = gt[3] + height * gt[5];
+        extent = Envelope{std::min(xa, xb), std::min(ya, yb), std::max(xa, xb), std::max(ya, yb)};
+    }
 };
 
 GdalRaster::GdalRaster() : impl_(std::make_unique<Impl>()) {}
@@ -81,8 +102,8 @@ std::unique_ptr<GdalRaster> GdalRaster::open(const std::string& path, std::strin
         return nullptr;
     }
     GDALDataset& ds = *im.dataset;
-    im.width  = ds.GetRasterXSize();
-    im.height = ds.GetRasterYSize();
+    im.width  = im.fileWidth  = ds.GetRasterXSize();
+    im.height = im.fileHeight = ds.GetRasterYSize();
 
     // 1. Where it lies: the geotransform (from the file or its world file).
     if (ds.GetGeoTransform(im.gt) != CE_None) {
@@ -113,10 +134,9 @@ std::unique_ptr<GdalRaster> GdalRaster::open(const std::string& path, std::strin
     }
     im.overviews = b1->GetOverviewCount() > 0;
 
-    // 3. What is transparent: GDAL's mask covers nodata, an alpha band and an
-    //    internal mask alike (255 = seen, 0 = transparent).
+    // 3. The grid: the geotransform, the bands, what is transparent.
     const int flags = b1->GetMaskFlags();
-    if (!(flags & GMF_ALL_VALID)) im.mask = b1->GetMaskBand();
+    im.useGrid(ds);
 
     // 4. The stretch: min and max of the WHOLE raster, read once (§66). Bytes
     //    in colour are already 0..255. Approximate (from an overview, or a
@@ -139,9 +159,7 @@ std::unique_ptr<GdalRaster> GdalRaster::open(const std::string& path, std::strin
     info.name   = CPLGetBasename(path.c_str());
     info.raster = true;
     info.crs    = crsInfo(ds.GetSpatialRef());
-    const double xa = im.gt[0], xb = im.gt[0] + im.width * im.gt[1];
-    const double ya = im.gt[3], yb = im.gt[3] + im.height * im.gt[5];
-    info.extent = Envelope{std::min(xa, xb), std::min(ya, yb), std::max(xa, xb), std::max(ya, yb)};
+    info.extent = im.extent;
     switch (im.kind) {
         case Kind::Palette: info.rasterKind = "palette"; break;
         case Kind::Rgb:     info.rasterKind = (flags & GMF_ALPHA) ? "RGBA" : "RGB"; break;
@@ -153,9 +171,52 @@ std::unique_ptr<GdalRaster> GdalRaster::open(const std::string& path, std::strin
 }
 
 const LayerInfo& GdalRaster::info() const { return impl_->info; }
-int  GdalRaster::width() const { return impl_->width; }
-int  GdalRaster::height() const { return impl_->height; }
+int  GdalRaster::width() const { return impl_->fileWidth; }
+int  GdalRaster::height() const { return impl_->fileHeight; }
 bool GdalRaster::hasOverviews() const { return impl_->overviews; }
+const Envelope& GdalRaster::extent() const { return impl_->extent; }
+bool GdalRaster::warped() const { return impl_->warpedDs != nullptr; }
+
+void GdalRaster::unwarp() {
+    Impl& im = *impl_;
+    if (!im.warpedDs) return;
+    im.useGrid(*im.dataset);   // the bands first: they must not point into the VRT closed next
+    im.warpedDs.reset();
+}
+
+// §72: what `gdalwarp -of VRT -t_srs <to> -r bilinear -dstalpha` does, in
+// memory. -dstalpha: the corners of a turned image are transparent, not black.
+bool GdalRaster::warpTo(const CrsInfo& from, const CrsInfo& to, std::string& error) {
+    Impl& im = *impl_;
+    unwarp();
+    if (to.wkt.empty()) {
+        error = "the map's system has no definition to warp to";
+        return false;
+    }
+    CPLStringList args;
+    for (const char* a : {"-q", "-of", "VRT", "-dstalpha", "-r"}) args.AddString(a);
+    args.AddString(im.kind == Kind::Palette ? "near" : "bilinear");
+    args.AddString("-t_srs");
+    args.AddString(to.wkt.c_str());
+    if (!from.wkt.empty()) {   // a declared system wins over the file's own (§70)
+        args.AddString("-s_srs");
+        args.AddString(from.wkt.c_str());
+    }
+    GDALWarpAppOptions* options = GDALWarpAppOptionsNew(args.List(), nullptr);
+    GDALDatasetH source = GDALDataset::ToHandle(im.dataset.get());
+    int usage = 0;
+    CPLErrorReset();
+    GDALDatasetH vrt = options ? GDALWarp("", nullptr, 1, &source, options, &usage) : nullptr;
+    GDALWarpAppOptionsFree(options);
+    if (!vrt) {
+        error = im.info.name + ": cannot be warped to " + (to.code.empty() ? to.name : to.code);
+        if (CPLGetLastErrorMsg()[0] != '\0') error += std::string(": ") + CPLGetLastErrorMsg();
+        return false;
+    }
+    im.warpedDs.reset(GDALDataset::FromHandle(vrt));
+    im.useGrid(*im.warpedDs);
+    return true;
+}
 
 RasterRead GdalRaster::read(const View& view, std::string& error) {
     using Clock = std::chrono::steady_clock;
@@ -167,7 +228,7 @@ RasterRead GdalRaster::read(const View& view, std::string& error) {
     // 1. The raster's corners in image pixels; the image pixels whose CENTRE
     //    falls on the raster (two raster tiles side by side: each pixel
     //    belongs to one of them, no gap, no overlap).
-    const Envelope& e = *im.info.extent;
+    const Envelope& e = im.extent;   // the file's, or the warped image's (§72)
     const Point a = view.worldToImage.apply({e.xmin, e.ymax});
     const Point b = view.worldToImage.apply({e.xmax, e.ymin});
     auto first = [](double edge, int size) {   // first pixel whose centre is >= edge

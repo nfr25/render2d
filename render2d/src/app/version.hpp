@@ -6,7 +6,7 @@
 
 namespace r2d {
 
-inline constexpr const char* kVersion = "0.4.7";
-inline constexpr const char* kVersionStep = "step 4b-1 (0.4.7: measuring on the ellipsoid, for editor2d)";
+inline constexpr const char* kVersion = "0.4.8";
+inline constexpr const char* kVersionStep = "step 4b-2 (0.4.8: rasters in another system, warped on the fly)";
 
 } // namespace r2d

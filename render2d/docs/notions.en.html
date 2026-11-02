@@ -174,8 +174,9 @@ th{background:var(--code)}
   <a href="#crs">69. Coordinate systems, on the Grand-Place</a>
   <a href="#reproject">70. Reprojecting on the fly</a>
   <a href="#osm">71. Testing with OpenStreetMap</a>
-  <a href="#refs">72. References</a>
-  <a href="#road">73. Roadmap</a>
+  <a href="#warp">72. Rasters in another system, warped on the fly</a>
+  <a href="#refs">73. References</a>
+  <a href="#road">74. Roadmap</a>
 </nav>
 
 <!-- ============================================================== -->
@@ -2784,10 +2785,10 @@ layers:
   <h3>Two sub-steps</h3>
   <ul>
     <li><strong>4b-1 (0.4.5) ✓: vectors.</strong> <code>--crs</code>, the <code>crs:</code> key, the conversion per layer, the filter in the layer's system, questions and extents, the report. Tests: the Grand-Place numbers above (Mercator to the millimetre, Lambert to the decimetre: the way PROJ chooses may change with its version), the axis order, a layer drawn identically when nothing needs converting.</li>
-    <li><strong>4b-2: rasters, postponed</strong> (29 October). See below.</li>
+    <li><strong>4b-2: rasters</strong>, postponed on 29 October (see below), done on 2 November: §72.</li>
   </ul>
 
-  <h3>Rasters in another system: postponed, and why</h3>
+  <h3>Rasters in another system: first postponed, and why <span class="tag">done since, §72</span></h3>
   <p>An image cannot be converted vertex by vertex: for <em>each pixel</em> of the view, the pixel of the file that falls there must be found, and its colour taken (or mixed from its neighbours). That is <strong>warping</strong>, GDAL's oldest trade.</p>
   <div class="calc"><strong>Why it is heavier than for vectors</strong><ol>
     <li>A 1 km² view of the UrbIS buildings: about 15,300 vertices to convert (§70).</li>
@@ -2888,8 +2889,125 @@ map: EPSG:31370 (BD72 / Belgian Lambert 72), 1200x960 px, 0.417 m/px, scale 1:14
 </section>
 
 <!-- ============================================================== -->
+<section id="warp">
+  <h2>72. Rasters in another system, warped on the fly <span class="tag">step 4b-2</span></h2>
+  <p>Until 0.4.7, an image in another system than the map's was not drawn: render2d said so and gave the <code>gdalwarp</code> command to convert it once (§70). Since 0.4.8 it is drawn, converted as it is read, exactly as the vectors are. Everything the design of §70 asked to check first has been checked with numbers, then on a real orthophoto (at the end of this chapter).</p>
+
+  <h3>First, the picture: a grid drawn on rubber</h3>
+  <p>A raster is a grid of coloured tiles laid on the ground: each tile (a pixel) covers, say, 5 × 5 cm. The file says only where the top-left corner is and how big a tile is; the rest follows.</p>
+  <p>Changing its system is like drawing that grid <strong>on a rubber sheet</strong>, and <strong>pinning</strong> the sheet down at the new coordinates of its points. The sheet stretches a little and turns a little (1° between Lambert 72 and UTM in Brussels, §72's test below); its tiles are no longer square nor straight. Then a <strong>new grid, straight</strong>, the screen's, is laid over the stretched rubber, and each new tile takes the colour found under its centre (the nearest tile of the rubber), or a mix of the four around it (bilinear). The new tiles that fall outside the rubber stay empty: transparent.</p>
+  <p>And the pins are exactly what GDAL does. It does not compute the exact projection of each of the millions of pixels: it pins a regular grid of points, computes exactly where they land, and stretches the rubber in straight lines between them; it adds pins wherever the straight line would be off by more than an eighth of a pixel (<code>gdalwarp</code>'s <code>-et 0.125</code>, its default). That is why it is fast.</p>
+
+  <h3>The principle: a virtual image already in the map's system</h3>
+  <p>For a vector layer, each vertex is converted (§70). An image has no vertices: for each pixel of the map, the file's pixel that falls there must be found. GDAL does it with a <strong>warped VRT</strong>: a virtual dataset, held in memory, that presents itself as an ordinary image <em>in the map's system</em>, north up, with its own grid of pixels. Nothing is computed when it is created; when a window of it is read, GDAL warps just that window from the file, and keeps the result in its cache.</p>
+  <p>So the raster reader of §65 and §66 did not change at all: it reads the view's window, from the overview that fits, and lays the pixels on the image. It simply reads the warped VRT instead of the file. It is the same idea as <code>ReprojectedLayer</code> for vectors: the layer is wrapped, the rest of the program does not know.</p>
+  <p>In code, it is the command everyone knows, run in memory:</p>
+<pre>gdalwarp -of VRT -t_srs &lt;the map's system&gt; -r bilinear -dstalpha  file.tif  (in memory)</pre>
+  <p>(<code>GDALWarp()</code> from <code>gdal_utils.h</code>: the same options as the command line, so the same behaviour as the tool people use.) <code>GdalRaster::warpTo(from, to)</code> wraps the file; <code>unwarp()</code> goes back to the file itself, when the map changes system and the file is already in the new one.</p>
+
+  <h3>The three checks asked by §70, with numbers</h3>
+  <p>The test: an image of 2,000 × 2,000 pixels of 1 m in UTM zone 31N (EPSG:32631, the zone of Sentinel-2's images for Brussels), with 4 overviews (2, 4, 8, 16), shown on a Lambert 72 map.</p>
+  <div class="calc"><ol>
+    <li><strong>The overviews are used.</strong> The warped VRT has 4 overviews too: GDAL builds one virtual overview per overview of the file. A view of the whole image reads the file's overview, not its 4 million pixels.</li>
+    <li><strong>The corners are transparent.</strong> The square of UTM, turned by about 1° in Lambert, no longer fills a rectangle: the warped image is 2,037 × 2,037 pixels (the turned square's bounding rectangle), and the four triangles around it are empty. With <code>-dstalpha</code>, GDAL adds an alpha band: corner pixel, alpha 0 (transparent); centre pixel, alpha 255. The reader's mask (§66) takes that alpha band as it takes a nodata value.</li>
+    <li><strong>The colours are kept.</strong> A grey of 200 in the file is 200 in the warped image.</li>
+  </ol></div>
+  <p>The cost: the first view read from the warped image takes 85 to 135 ms (GDAL computes its grid of points and warps); the same view a second time, 1 ms, from GDAL's cache. The file read directly: about 1 ms. Warping is not free, so <strong>for an image used every day, <code>gdalwarp</code> once into the map's system stays the fastest</strong>; but an image received in another system is now shown straight away.</p>
+
+  <h3>The resampling</h3>
+  <p>A pixel of the warped image falls between four pixels of the file. Two ways to give it a colour:</p>
+  <ul>
+    <li><strong>bilinear</strong>: a mix of the four, weighted by distance. For a photo or a terrain model: the image stays smooth. The default.</li>
+    <li><strong>near</strong>: the nearest pixel, unchanged. For a raster of <strong>classes</strong> with a palette (land use, flood zones...): mixing class 2 (green) and class 3 (blue) would give a class that does not exist. render2d chooses it by itself for a palette raster.</li>
+  </ul>
+  <p>Then the reader of §66 resamples once more, to the view's size: the nearest warped pixel when enlarged, their average when reduced. Two resamplings instead of one: invisible at the usual scales; for a 0.25 m orthophoto viewed at 1:200, the converted image is the better choice.</p>
+
+  <h3>Worked example: a raster in degrees on the Lambert map</h3>
+  <p>The classic trap of degrees is the order of the axes (§69): latitude first, or longitude first? The check: an image of 200 × 100 pixels of 0.0001°, from 4.34° to 4.36° east and from 50.84° to 50.85° north (south of the Grand-Place), as a checkerboard of 20 × 20 pixels, so cells of 0.002° × 0.002°.</p>
+  <div class="calc"><strong>How big on the ground?</strong><ol>
+    <li>One degree of latitude: about 111.2 km everywhere. 0.01° of latitude: <strong>1,112 m</strong>.</li>
+    <li>One degree of longitude shrinks towards the pole, by the cosine of the latitude: at 50.85°, cos = 0.632, so 111.3 × 0.632 = 70.3 km. 0.02° of longitude: <strong>1,406 m</strong>.</li>
+    <li>render2d's report: a map of 400 × 316 pixels at 3.532 m per pixel, so 400 × 3.532 = <strong>1,413 m</strong> wide and 316 × 3.532 = <strong>1,116 m</strong> high. The same, give or take a pixel.</li>
+    <li>A cell of 0.002° × 0.002°: 141 m wide, 222 m high. On the picture, the "squares" of the checkerboard are tall rectangles: it is right, a square of degrees is not a square of metres in Brussels.</li>
+  </ol></div>
+  <p>With the axes swapped, the image would have landed in the Indian Ocean (4.35° south, 50.85° east), and been refused for being outside Lambert's area of use.</p>
+
+  <h3>What the report says</h3>
+<pre>  r2d_raster_utm       raster 220x220 px from 41x41 warped px (nearest)    4.6 ms  (read 4.4 ms, draw 0.1 ms)
+      reprojected EPSG:32631 -&gt; EPSG:31370 by Inverse of UTM zone 31N + Inverse of BD72 to WGS 84 (3) + Belgian Lambert 72 (1 m)</pre>
+  <p>"warped px" instead of "file px": the pixels counted are the warped image's. The second line is the vectors' one (§70): which conversion PROJ chose, and its accuracy. For an image whose system is declared in the map file (<code>crs:</code> of the layer, §70), the declared system wins over the file's, as for vectors (<code>-s_srs</code> in the command above).</p>
+
+  <h3>The tests</h3>
+  <p><code>test_raster</code>: a checkerboard of 40 × 40 pixels of 10 m in UTM at the Grand-Place, under a Lambert map. Its extent in Lambert matches the four converted corners to within a warped pixel; at the centre of each cell, its colour (within 2 levels); in the nodata cell and in the four corners of the image, the white below. The map switched to UTM: the image is read as it is (no "reprojected" line), the Lambert board is warped in its turn. A palette of four classes: the exact colours, never a mix.</p>
+  <p>editor2d has nothing to do: it draws through <code>Map</code>, so its raster layers in another system appear, with the conversion in its Layers panel.</p>
+
+  <div class="demo">
+  <h3 style="margin-top:0">The real test: a 5 cm orthophoto, there and back <span class="tag">2 November 2026</span></h3>
+  <p>The idea: send one tile of the Region's 2023 orthophoto (UrbIS, 1 km × 1 km at 5 cm, in Lambert 72) into UTM with GDAL, then bring it back into Lambert with render2d, under the cadastral parcels. If the parcels fall on the walls as before, both directions are right: the outward one with the tool everyone trusts, the return one with ours.</p>
+
+  <h4>1. There, with gdalwarp</h4>
+<pre>gdalwarp -t_srs EPSG:32631 -r bilinear -dstalpha -of COG -co COMPRESS=JPEG UrbOrthoY23_152171_RBC_05cm_RGB_8bit.tif ortho-utm2.tif</pre>
+  <p><code>gdalinfo ortho-utm2.tif</code> says more than it seems. Two of its numbers can be worked out by hand:</p>
+  <div class="calc"><strong>20,367 pixels instead of 20,000: the tile has turned</strong><ol>
+    <li>20,367 × 0.049988 m = <strong>1,018.1 m</strong> a side, instead of 1,000 m.</li>
+    <li>A square of 1,000 m turned by an angle θ fits in a square of side 1,000 × (cos θ + sin θ).</li>
+    <li>1,000 × (cos θ + sin θ) = 1,018.1 gives θ ≈ <strong>1.03°</strong>: the angle between Lambert's north and UTM's north in Brussels (the convergence of the meridians). The 18 m more are the four empty triangles around the turned tile.</li>
+  </ol></div>
+  <div class="calc"><strong>A pixel of 4.9988 cm instead of 5 cm: the two projections do not have the same scale here</strong><ol>
+    <li>No flat map keeps distances exactly everywhere: each projection has a scale factor that varies from place to place.</li>
+    <li>Lambert 72 at Brussels: <strong>0.99996</strong> (§69, the Grand-Place).</li>
+    <li>UTM 31N is centred on 3° E; the tile is at 4.40° E, 1.40° aside. Its factor is about 0.9996 × (1 + d²/2), d being that gap in radians times the cosine of the latitude: d = 1.40 × 0.01745 × cos 50.85° = 0.02443 × 0.6312 = 0.01542; d²/2 = 0.000119; factor = 0.9996 × 1.000119 = <strong>0.99972</strong>.</li>
+    <li>The ratio: 0.99972 / 0.99996 = 0.99976; and 5 cm × 0.99976 = <strong>4.9988 cm</strong>, gdalinfo's pixel size. gdalwarp kept the same number of pixels per metre of ground; it is UTM's scale that is 1 mm shorter every 4 m.</li>
+  </ol></div>
+  <p>And four lines that the first try did not have:</p>
+<pre>Band 1 Block=512x512 Type=Byte, ColorInterp=Red
+  Overviews: 10183x10183, 5091x5091, 2545x2545, 1272x1272, 636x636, 318x318
+  Mask Flags: PER_DATASET
+  Overviews of mask band: 10183x10183, 5091x5091, 2545x2545, 1272x1272, 636x636, 318x318</pre>
+  <p>JPEG cannot store an alpha band: the COG driver turned <code>-dstalpha</code>'s alpha into a <strong>mask</strong>, one for the three bands, stored aside <em>without loss</em>, with its own overviews. The photo is compressed (and slightly altered, as JPEG does), but its edge against the void stays exact to the pixel. That mask is what render2d reads as transparency (GDAL's mask, §66).</p>
+
+  <h4>The first try, without -dstalpha: black edges</h4>
+  <img src="img/warp-black-edges.jpg" alt="The orthophoto warped back into Lambert under the parcels, with black slanted bands along its right and top edges" style="width:100%;height:auto;border:1px solid var(--line);border-radius:6px;background:#fff">
+  <p class="muted" style="margin-top:4px">The orthophoto brought back into Lambert under the parcels, 1:2,964. Orthophoto and parcels: UrbIS © Brussels Region.</p>
+  <p>The black is not render2d's: it is <em>in the file</em>. Without <code>-dstalpha</code>, gdalwarp filled the four triangles around the turned tile with pixels of black (0, 0, 0), pixels like the others; and JPEG then made them part of the photo. Back in Lambert, render2d turns the whole UTM image by −1°, triangles included: the photo's square becomes straight again, and the black triangles end up slanted just outside it. Beyond them, render2d's own triangles (those of the return) are transparent: the parcels show through. It is exactly why render2d warps with <code>-dstalpha</code>. (Declaring "black is empty" in the map file would not save such a file: after JPEG, the black of the edges is 2, 5, 11..., no longer 0; a grey fringe would remain. Noted for later anyway, §74.)</p>
+
+  <h4>2. Back, with render2d (in editor2d)</h4>
+  <p>The parcels opened first (the map takes their system, EPSG:31370), then <code>ortho-utm2.tif</code> dropped on the window, the parcels put back on top.</p>
+  <img src="img/warp-utm-back-to-lambert.jpg" alt="The north-east corner of the orthophoto tile, back in Lambert: straight edges, the parcels drawn over the photo and beyond it" style="width:100%;height:auto;border:1px solid var(--line);border-radius:6px;background:#fff">
+  <p class="muted" style="margin-top:4px">The tile's north-east corner, 1:854, rendered in 84 ms. Orthophoto and parcels: UrbIS © Brussels Region.</p>
+  <p>The rotation has become invisible, and that is the proof. The tile's corner falls exactly on X = 153,000, Y = 172,000, its edges are horizontal and vertical: the photo is back on its original square. The turn existed only in the UTM file; the triangles around it, now transparent, leave nothing to see. The parcels follow the kerbs and the façades as on the original tile.</p>
+
+  <h4>3. The same, in a third system: Lambert for Europe</h4>
+  <p>View ▸ Map system ▸ <strong>EPSG:3034</strong> (ETRS89 / LCC Europe, the conic Lambert of the European agencies). Now <em>both</em> layers are converted while being read: the parcels from Lambert 72, the photo from UTM with its mask. They still lie on each other.</p>
+  <img src="img/warp-lcc-europe.jpg" alt="The orthophoto and the parcels on a map in EPSG:3034: both turned by about 4 degrees, still on top of each other" style="width:100%;height:auto;border:1px solid var(--line);border-radius:6px;background:#fff">
+  <p class="muted" style="margin-top:4px">Map in EPSG:3034, 1:2,896, two layers converted, rendered in 198 ms. Orthophoto and parcels: UrbIS © Brussels Region.</p>
+  <div class="calc"><strong>The angle can be foretold</strong><ol>
+    <li>In a conic Lambert, the map's north turns by γ = n × (λ − λ₀): λ₀ is the projection's central meridian, n its "cone constant", worked out from its two standard parallels φ₁ and φ₂: n = ln(cos φ₁ / cos φ₂) / ln(tan(45° + φ₂/2) / tan(45° + φ₁/2)).</li>
+    <li>EPSG:3034: parallels 35° and 65°, central meridian 10° E. ln(cos 35° / cos 65°) = ln(0.8192 / 0.4226) = ln(1.9384) = 0.6619. ln(tan 77.5° / tan 62.5°) = ln(4.5107 / 1.9210) = ln(2.3481) = 0.8536. n = 0.6619 / 0.8536 = <strong>0.775</strong>.</li>
+    <li>The tile is at 4.40° E, so 4.40 − 10 = −5.60° from the central meridian: γ = 0.775 × (−5.60°) = <strong>−4.34°</strong>.</li>
+    <li>Lambert 72's own central meridian is 4.37° E, almost on the tile: its north there is straight (0.03°). So the whole map turns by 4.34° from what we are used to.</li>
+    <li>On the screenshot (before cropping), the photo's top edge goes from (497, 313) to (1,340, 377): 64 pixels down over 843; 64 / 843 = 0.0759, whose arc tangent is <strong>4.34°</strong>.</li>
+  </ol></div>
+  <p>The status bar's X = 3,620,219, Y = 2,691,805 are EPSG:3034's: its false origin (4,000,000; 2,800,000) is where the meridian 10° E crosses the parallel 52° N, about 380 km east and 108 km north of Brussels.</p>
+  <p>Three systems, one photo and its parcels always on each other, and the angle seen on the screen is the angle of the formula.</p>
+  </div>
+
+  <h3>A lesson on the way: tiles in space, overviews in scale</h3>
+  <p>The Region's whole orthophoto at 40 cm (<code>Ortho_31370_TIFF_04000_20230906_40_RGB.tif</code>) was very slow, the 5 cm tile fast. <code>gdalinfo</code> told why: <code>Block=256x256</code> (the file is in tiles), but no <code>Overviews:</code> line and no <code>COMPRESSION</code>.</p>
+  <div class="calc"><ol>
+    <li>47,500 × 45,000 = 2.14 billion pixels, × 3 bytes = <strong>6.4 GB</strong>.</li>
+    <li><strong>The tiles</strong> cut in <em>space</em>: 186 × 176 = 32,736 tiles of 256 × 256 pixels, 192 KB each. A view of 600 × 300 m at 0.4 m per pixel covers about 7 × 4 = 28 tiles: 5 MB read, the rest stays on the disk. Fast.</li>
+    <li>Zoomed out on the whole Region, every tile is under the view: all 6.4 GB are read to make an image 1,000 pixels wide. The tiles do not help there.</li>
+    <li><strong>The overviews</strong> cut in <em>scale</em>: smaller copies, 1/2, 1/4... 1/64. The whole Region then reads level 32, 1,484 × 1,406 pixels, about <strong>6 MB</strong>, a thousand times less.</li>
+  </ol></div>
+  <p>The two together are the pyramid of tiles2d's <code>z/x/y</code> for Leaflet: each level its own size, each level in tiles. The remedy, once:</p>
+<pre>gdal_translate -of COG -co COMPRESS=JPEG -co QUALITY=90 Ortho_..._40_RGB.tif ortho-40cm-cog.tif</pre>
+  <p>(Or, without touching the original, the overviews beside it: <code>gdaladdo -ro -r average --config COMPRESS_OVERVIEW JPEG --config PHOTOMETRIC_OVERVIEW YCBCR file.tif 2 4 8 16 32 64</code>.) render2d warns about a big raster without overviews when it opens it, with that command.</p>
+</section>
+
+<!-- ============================================================== -->
 <section id="refs">
-  <h2>72. References</h2>
+  <h2>73. References</h2>
   <h3>Books</h3>
   <ul class="refs">
     <li><strong>Adobe Systems, <em>PostScript Language Reference Manual</em></strong> (the "red book"), 3<sup>rd</sup> ed., 1999. The origin of the path / fill / stroke model, of the even-odd and non-zero rules, of <code>gsave</code>/<code>grestore</code>. Chapters 10 and 11.</li>
@@ -2939,7 +3057,7 @@ map: EPSG:31370 (BD72 / Belgian Lambert 72), 1200x960 px, 0.417 m/px, scale 1:14
 
 <!-- ============================================================== -->
 <section id="road">
-  <h2>73. Roadmap</h2>
+  <h2>74. Roadmap</h2>
   <ol class="road">
     <li>Step 1 — Matrix, canvas, Cairo surface: test shapes in PNG, SVG and PDF. ✓</li>
     <li>Step 2 — GDAL/OGR reading: drawing a real layer with a fixed style. ✓</li>
@@ -2958,7 +3076,7 @@ map: EPSG:31370 (BD72 / Belgian Lambert 72), 1200x960 px, 0.417 m/px, scale 1:14
     <li>Step 3n ✓ — Classifying on the command line (§63): <code>--categorize</code>, <code>--graduate</code>, <code>--write-style</code>; <code>classify()</code>, the same function for editor2d and render2d.</li>
     <li>Step 3o ✓ — Selecting by attributes (§64): <code>Map::queryWhere</code>, <code>GdalLayer::forFids</code>, <code>--where</code>. Client: editor2d's selection by expression (4a).</li>
     <li>Step 4a ✓ — Rasters (§65, §66): reading the view's window with its overviews, bands into ARGB32, transparent nodata, the <code>raster</code> symbolizer and its opacity. Same coordinate system as the map. Client: editor2d's raster layers.</li>
-    <li>Step 4b — On-the-fly reprojection (PROJ), §69 to §71: 4b-1 (0.4.5) ✓ vectors, <code>--crs</code>, <code>crs:</code> of the map and of a layer, the conversion per layer, the catalogue for editor2d; tested on OpenStreetMap against UrbIS. 4b-2, rasters by warping and OpenStreetMap's tiles: <strong>postponed</strong> (§70: <code>gdalwarp</code> once meanwhile; back with satellite imagery or OSM tiles).</li>
+    <li>Step 4b — On-the-fly reprojection (PROJ), §69 to §71: 4b-1 (0.4.5) ✓ vectors, <code>--crs</code>, <code>crs:</code> of the map and of a layer, the conversion per layer, the catalogue for editor2d; tested on OpenStreetMap against UrbIS. 4b-2 (0.4.8) ✓ rasters warped on the fly (§72). OpenStreetMap's tiles: step 4c, with the other web basemaps.</li>
     <li>Later, after reprojection and PostGIS, once editor2d and viewer2d are rich enough: <strong>render2d as a server</strong>, a program that stays up with its map open and answers over HTTP (<code>/map</code>, <code>/tiles/z/x/y</code>, <code>/query</code>, <code>/legend</code>, a style changed live) and as a <strong>standard WMS</strong>, readable by QGIS and any GIS client. The favoured option: <code>render2d --serve</code>, a process that stays up with its map open and talks through a pipe (stdin/stdout), one JSON line per request and per answer, the image as bytes right after, with the vocabulary of editor2d's commands (<code>map.render</code>, <code>layer.add</code>…). In front of it, FastAPI (or viewer2d) keeps a small pool of these processes: a GDAL crash kills only one, they draw in parallel. The other paths stay open: an HTTP server in C++ inside render2d, or render2d as a Python module (pybind11) if every millisecond counts. Then, real time: telling the server an area has changed, redrawing, invalidating the tiles.</li>
     <li>For the map built in editor2d (its notes, §31 to §34): describing the format itself (properties, types, default values, geometries concerned) for the legend dialog and the future API; reading a field's distinct values, minimum and maximum.</li>
     <li>Alongside, in a separate project: <strong>the test viewer <code>viewer2d</code></strong> (NiceGUI + Leaflet, in Lambert 72), which calls <code>render2d</code> on the command line at every map move. ✓</li>
@@ -2968,9 +3086,11 @@ map: EPSG:31370 (BD72 / Belgian Lambert 72), 1200x960 px, 0.417 m/px, scale 1:14
     <li>Step 7 — Vector tiles (MVT): the same reading, clipping and simplification steps, an MVT encoder next to the canvas, and the translation of YSLD into a MapLibre style.</li>
   </ol>
   <p class="muted">The "style" and "reprojection" steps were swapped after the first rendering of Brussels: all the test data are in Lambert 72, and the most visible need was style (outlines wider than the buildings at small scale).</p>
-  <p class="muted">Versions follow this roadmap: <code>0.&lt;step&gt;.&lt;sub-step&gt;</code>, so 0.3.4 for step 3d, 0.3.5 for step 3e, 0.3.6 for step 3f, 0.3.7 for step 3g, 0.3.8 for step 3h, 0.3.9 for step 3i, 0.3.10 for step 3j, 0.3.11 for step 3k, 0.3.12 for step 3l, 0.3.13 for step 3m, 0.3.14 for step 3n (0.3.15: scale bands; 0.3.16: reclassifying), 0.3.17 for step 3o, 0.4.0 for step 4a (0.4.1: <code>listLayers</code>; 0.4.2: the session password; 0.4.3: tables without geometry; for editor2d; 0.4.4: the data beside the executable, for the Windows zip, §68), 0.4.5 for step 4b-1 (vectors reprojected, §70), 0.4.6: the PostGIS password looked for by render2d (§67), 0.4.7: <code>GeodesicMeter</code> (§70). <code>render2d --version</code> shows it, with the build date and the GDAL and Cairo versions, and the report starts with it: a forgotten executable is spotted immediately.</p>
+  <p class="muted">Versions follow this roadmap: <code>0.&lt;step&gt;.&lt;sub-step&gt;</code>, so 0.3.4 for step 3d, 0.3.5 for step 3e, 0.3.6 for step 3f, 0.3.7 for step 3g, 0.3.8 for step 3h, 0.3.9 for step 3i, 0.3.10 for step 3j, 0.3.11 for step 3k, 0.3.12 for step 3l, 0.3.13 for step 3m, 0.3.14 for step 3n (0.3.15: scale bands; 0.3.16: reclassifying), 0.3.17 for step 3o, 0.4.0 for step 4a (0.4.1: <code>listLayers</code>; 0.4.2: the session password; 0.4.3: tables without geometry; for editor2d; 0.4.4: the data beside the executable, for the Windows zip, §68), 0.4.5 for step 4b-1 (vectors reprojected, §70), 0.4.6: the PostGIS password looked for by render2d (§67), 0.4.7: <code>GeodesicMeter</code> (§70), 0.4.8 for step 4b-2 (rasters warped, §72). <code>render2d --version</code> shows it, with the build date and the GDAL and Cairo versions, and the report starts with it: a forgotten executable is spotted immediately.</p>
+  <p class="muted">Decided on 31 October, for editor2d's 1.0 (renamed <strong>carto2D</strong>), what render2d must learn, in this order: rasters in another system (4b-2, §72 ✓ 2 November), web basemaps (4c: OpenStreetMap's tiles, WMTS, WMS, through GDAL's drivers), and labels without collisions, names along lines. Then the publication, automated: tests and builds on Windows and Linux at every tag, the installer, an AppImage.</p>
   <p class="muted">Next, chosen on 30 October: <strong>a demonstration package</strong>, because people try what installs with a double click. An Inno Setup installer (its compiler <code>ISCC.exe</code> called at the end of <code>tools/package-windows.sh</code>): render2d as in the Windows zip, viewer2d with an embedded Python (NiceGUI and FastAPI inside), a district of Brussels already prepared (UrbIS buildings, parcels and addresses, OSM roads, indexed GeoPackages, the styles, a <code>viewer.yaml</code> with relative paths), and a Start-menu icon that starts viewer2d and opens the browser on the Grand-Place. Notes first.</p>
   <p class="muted">Desirable, without a date: label collisions and labels straddling tile edges.</p>
+  <p class="muted">Noted on 2 November, when a real file needs it: a <code>nodata:</code> key per raster layer in the map file, as <code>crs:</code> (§70), to declare the empty value of a file that does not declare it itself (an image warped without <code>-dstalpha</code>: black corners, 0 0 0). Through GDAL (the band's nodata set on a VRT). Its limit, to say in the note: on a JPEG-compressed image, the black of the edges is no longer exactly 0 (2, 5, 11...), and a grey fringe remains; the clean remedy stays the alpha band or the mask (§72).</p>
   <p class="muted">Then: <code>profile</code> and <code>autostyle</code>, then a custom engine (AGG or Blend2D) behind the same canvas.</p>
 </section>
 

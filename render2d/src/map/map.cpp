@@ -181,6 +181,7 @@ void Map::bindLayer(Layer& layer, std::vector<std::string>& warnings) const {
     layer.toMap.reset();
     layer.mapExtent.reset();
     layer.unusable = false;
+    if (layer.raster) layer.raster->unwarp();   // §72: the file itself, until a warp is needed
     const LayerInfo& li = layer.info();
     const CrsInfo& lc = layer.crs();
     if (!lc.known) {
@@ -195,20 +196,21 @@ void Map::bindLayer(Layer& layer, std::vector<std::string>& warnings) const {
         return;
     }
     if (sameCrs(lc, crs_)) return;
-    if (layer.raster) {   // 4b-2: warping
-        // §70: postponed. Said with the command that does it once, outside.
-        const std::string code = crs_.epsg ? "EPSG:" + std::to_string(crs_.epsg) : crs_.code;
-        warnings.push_back(li.name + ": CRS " + crsLabel(lc) + " differs from the map CRS " + crsLabel(crs_) +
-                           ": a raster is not reprojected yet (step 4b-2), not drawn. Once for all: gdalwarp -t_srs " +
-                           (code.empty() ? std::string("<map CRS>") : code) + " -r bilinear -of COG in.tif out.tif");
-        layer.unusable = true;
-        return;
-    }
     std::string error;
-    layer.toMap = CrsTransform::create(lc, crs_, li.extent, error);
+    layer.toMap = CrsTransform::create(lc, crs_, li.extent, error);   // a raster too: the report's "reprojected" line
     if (!layer.toMap) {
         warnings.push_back(li.name + ": " + error + ", not drawn");
         layer.unusable = true;
+        return;
+    }
+    if (layer.raster) {   // §72: warped on the fly, from the file's overviews
+        if (!layer.raster->warpTo(lc, crs_, error)) {
+            warnings.push_back(error + ", not drawn");
+            layer.toMap.reset();
+            layer.unusable = true;
+            return;
+        }
+        layer.mapExtent = layer.raster->extent();   // the warped image's rectangle
         return;
     }
     layer.reprojected = std::make_unique<ReprojectedLayer>(*layer.source, *layer.toMap);
@@ -358,7 +360,7 @@ MapReport Map::render(Canvas& cv, const View& view, const std::function<bool()>&
             const LayerRenderStats st = renderRaster(*layer->raster, cv, v,
                                                      layer->scaledStyle ? &*layer->scaledStyle : nullptr,
                                                      report.warnings);
-            report.layers.push_back({li.name, st, {}});
+            report.layers.push_back({li.name, st, layer->toMap ? layer->toMap->description() : std::string()});   // §72
             if (st.passes == 0) warn(li.name + ": no rule of the style applies at scale 1:" +
                                      std::to_string(static_cast<long>(std::lround(v.scaleDenominator()))));
             continue;
@@ -514,9 +516,12 @@ std::vector<std::string> reportLines(const MapReport& r) {
     for (const LayerReport& lr : r.layers) {
         const LayerRenderStats& st = lr.stats;
         if (st.raster) {   // §66: pixels, not features
-            lines.push_back(format("  %-20s raster %dx%d px from %.0fx%.0f file px (%s) %9.1f ms  (read %.1f ms, draw %.1f ms)",
+            // §72: warped, the pixels read are the warped image's, not the file's.
+            lines.push_back(format("  %-20s raster %dx%d px from %.0fx%.0f %s px (%s) %9.1f ms  (read %.1f ms, draw %.1f ms)",
                                    lr.name.c_str(), st.pixelsWidth, st.pixelsHeight, st.fileWidth, st.fileHeight,
+                                   lr.reprojection.empty() ? "file" : "warped",
                                    st.reduced ? "averaged" : "nearest", st.readMs + st.drawMs, st.readMs, st.drawMs));
+            if (!lr.reprojection.empty()) lines.push_back("      reprojected " + lr.reprojection);
             continue;
         }
         std::string line = format("  %-20s %8zu read %8zu drawn %9.1f ms  (read %.1f ms, ", lr.name.c_str(),

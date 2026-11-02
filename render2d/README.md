@@ -34,7 +34,7 @@ the code follows them.
 | — | Test viewer `viewer2d` (NiceGUI + Leaflet), a separate project calling `render2d` | done |
 | 4a | Raster layers (GeoTIFF, world files): the view's window with overviews, RGB / RGBA / palette / grey, nodata, the `raster` symbolizer and its opacity | done |
 | 4b-1 | Reprojection on the fly of vector layers (PROJ): `--crs`, `crs:` in the config, each layer converted to the map's system | done |
-| 4b-2 | Reprojection of rasters (warping), OpenStreetMap tiles. Meanwhile: `gdalwarp -t_srs EPSG:31370 -r bilinear -of COG in.tif out.tif` once | postponed |
+| 4b-2 | Rasters in another system, warped on the fly (a warped VRT, the file's overviews, transparent corners) | done |
 | 4c | WMS / WMTS / WFS sources | |
 | — | Clipping, simplification | |
 | 5 | Full command line, JSON warnings | |
@@ -311,7 +311,11 @@ The report gives the pixels drawn and the file pixels they cover:
 ```
 
 A raster without a coordinate system is assumed to be in the map's (with a
-warning); a raster in another system is not drawn until step 4b. A large raster
+warning). A raster in another system is warped on the fly into the map's
+(step 4b-2): bilinear, or the nearest pixel for a palette; the report then
+counts "warped px" and adds the conversion used. Warping costs a little at
+each new view: for an image used every day, convert it once,
+`gdalwarp -t_srs EPSG:31370 -r bilinear -of COG in.tif out.tif`. A large raster
 (over 4096 pixels on a side) without overviews gets a warning with the command
 that adds them: `gdaladdo -r average file.tif 2 4 8 16 32 64`.
 

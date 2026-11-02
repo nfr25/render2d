@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // The rasters (notions §65, §66): a 4 x 4 checkerboard GeoTIFF written by the
 // test, read at the size of the view, laid on the image; a grey terrain
-// model with a world file and a nodata value, like UrbIS's DSM.
+// model with a world file and a nodata value, like UrbIS's DSM; and an image
+// in UTM under a Lambert map, warped on the fly (§72).
 
 #include <cstdio>
 #include <cstring>
@@ -15,6 +16,7 @@
 
 #include "backend/cairo/cairo_image.hpp"
 #include "backend/gdal/gdal_raster.hpp"
+#include "backend/gdal/gdal_reproject.hpp"
 #include "check.hpp"
 #include "map/map.hpp"
 
@@ -308,22 +310,149 @@ symbolizers:
     }
 }
 
-// §66: another CRS is refused (until step 4b-2); none is assumed to be the map's.
-void testCrs(const std::string& board) {
-    const std::string utm = writeBoard("r2d_raster_utm.tif", "EPSG:32631");
+// §72: a raster in another system. 40 x 40 pixels of 10 m in UTM zone 31N
+// (EPSG:32631, Sentinel-2's zone for Brussels), at the Grand-Place: the
+// checkerboard's colours, one cell = 10 x 10 pixels. Palette: four classes.
+const double kUtmX = 594800.0, kUtmY = 5634200.0;   // top-left corner
+
+std::string writeUtm(const char* name, bool palette) {
+    const std::string path = tmp(name).string();
+    GDALDriver* gtiff = GetGDALDriverManager()->GetDriverByName("GTiff");
+    GDALDataset* ds = gtiff->Create(path.c_str(), 40, 40, palette ? 1 : 3, GDT_Byte, nullptr);
+    double gt[6] = {kUtmX, 10.0, 0.0, kUtmY, 0.0, -10.0};
+    ds->SetGeoTransform(gt);
+    OGRSpatialReference srs;
+    srs.importFromEPSG(32631);
+    ds->SetSpatialRef(&srs);
+    std::vector<unsigned char> v(1600);
+    for (int b = 1; b <= ds->GetRasterCount(); ++b) {
+        for (int row = 0; row < 40; ++row)
+            for (int col = 0; col < 40; ++col) {
+                const Rgb c = cell(col / 10, row / 10);
+                v[row * 40 + col] = static_cast<unsigned char>(
+                    palette ? (col / 10 + row / 10) % 4 : b == 1 ? c.r : b == 2 ? c.g : c.b);
+            }
+        GDALRasterBand* band = ds->GetRasterBand(b);
+        CHECK(band->RasterIO(GF_Write, 0, 0, 40, 40, v.data(), 40, 40, GDT_Byte, 0, 0) == CE_None);
+        if (!palette) band->SetNoDataValue(0.0);
+    }
+    if (palette) {
+        GDALColorTable table;
+        const GDALColorEntry classes[4] = {{230, 30, 30, 255}, {30, 160, 30, 255}, {30, 30, 230, 255}, {240, 220, 0, 255}};
+        for (int i = 0; i < 4; ++i) table.SetColorEntry(i, &classes[i]);
+        ds->GetRasterBand(1)->SetColorTable(&table);
+        ds->GetRasterBand(1)->SetColorInterpretation(GCI_PaletteIndex);
+    }
+    GDALClose(ds);
+    return path;
+}
+
+// A UTM point in Lambert 72, with GDAL's own conversion.
+Point toLambert(double x, double y) {
+    OGRSpatialReference utm, lambert;
+    utm.importFromEPSG(32631);
+    lambert.importFromEPSG(31370);
+    utm.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+    lambert.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+    OGRCoordinateTransformation* ct = OGRCreateCoordinateTransformation(&utm, &lambert);
+    ct->Transform(1, &x, &y);
+    OGRCoordinateTransformation::DestroyCT(ct);
+    return {x, y};
+}
+
+// The image's pixel at a map point (Lambert).
+std::uint32_t pixelAt(CairoImage& img, const View& v, Point lambert) {
+    const Point p = v.worldToImage.apply(lambert);
+    const int x = static_cast<int>(p.x), y = static_cast<int>(p.y);
+    const unsigned char* px = img.pixels() + y * img.stride() + x * 4;
+    return (static_cast<std::uint32_t>(px[3]) << 24) | (px[2] << 16) | (px[1] << 8) | px[0];
+}
+
+// The centre of cell (col, row), in UTM.
+Point cellCentre(int col, int row) { return {kUtmX + 100.0 * col + 50.0, kUtmY - 100.0 * row - 50.0}; }
+
+void testWarped(const std::string& board) {
+    const std::string utm = writeUtm("r2d_raster_utm.tif", false);
     Map map = Map::open({{board, {}}, {utm, {}}, {writeDsm(true), {}}});
     CHECK(map.layerCount() == 3);
-    CHECK(map.crs().epsg == 31370);
-    CHECK(anyWarning(map.warnings(), "a raster is not reprojected yet"));
-    CHECK(anyWarning(map.warnings(), "r2d_raster_dsm: no CRS declared"));
+    CHECK(map.crs().epsg == 31370);   // the first layer's
+    CHECK(!anyWarning(map.warnings(), "r2d_raster_utm"));
+    CHECK(contains(map.layerReprojection(1), "EPSG:32631 -> EPSG:31370"));
+    std::printf("     reprojected %s\n", map.layerReprojection(1).c_str());
+
+    // Its extent in Lambert: the four corners converted, give or take a
+    // warped pixel (the VRT's grid is about 10 m).
+    const Point nw = toLambert(kUtmX, kUtmY), ne = toLambert(kUtmX + 400, kUtmY);
+    const Point sw = toLambert(kUtmX, kUtmY - 400), se = toLambert(kUtmX + 400, kUtmY - 400);
+    const auto e = map.layerExtent(1);
+    CHECK(e.has_value());
+    if (!e) return;
+    CHECK_NEAR(e->xmin, std::min(nw.x, sw.x), 11.0);
+    CHECK_NEAR(e->xmax, std::max(ne.x, se.x), 11.0);
+    CHECK_NEAR(e->ymin, std::min(sw.y, se.y), 11.0);
+    CHECK_NEAR(e->ymax, std::max(nw.y, ne.y), 11.0);
+    std::printf("     extent in Lambert %.1f %.1f %.1f %.1f\n", e->xmin, e->ymin, e->xmax, e->ymax);
+
+    // Drawn at 2 m per pixel on white: the cells' colours where their
+    // centres fall, the nodata cell and the turned corners transparent.
     std::string error;
-    auto img = CairoImage::create(ImageSize{4, 4}, error);
-    const MapReport rep = map.render(img->canvas(), *makeView(kBoard, ImageSize{4, 4}));
-    CHECK(rep.layers.size() == 2);   // the board and the DSM (elsewhere, nothing to draw)
-    CHECK(anyWarning(rep.warnings, "r2d_raster_utm: not drawn"));
+    const View v = *makeView(*e, ImageSize{220, 220});
+    auto img = CairoImage::create(ImageSize{220, 220}, error);
+    img->canvas().clear(Color::fromHex(0xFFFFFF));
+    const MapReport rep = map.render(img->canvas(), v);
+    for (const auto& [col, row] : {std::pair{0, 0}, {1, 1}, {2, 0}, {0, 3}}) {
+        const Point c = cellCentre(col, row);
+        const std::uint32_t p = pixelAt(*img, v, toLambert(c.x, c.y));
+        const Rgb want = cell(col, row);
+        CHECK_NEAR(redOf(p), want.r, 2.0);
+        CHECK_NEAR(greenOf(p), want.g, 2.0);
+        CHECK_NEAR(blueOf(p), want.b, 2.0);
+    }
+    const Point hole = cellCentre(3, 3);
+    CHECK(pixelAt(*img, v, toLambert(hole.x, hole.y)) == 0xFFFFFFFFu);   // nodata: the white below
+    CHECK(channel(*img, 0, 0, 1) == 255 && channel(*img, 219, 0, 1) == 255);   // the corners outside the turned square
+    CHECK(channel(*img, 0, 219, 1) == 255 && channel(*img, 219, 219, 1) == 255);
+    const auto lines = reportLines(rep);
+    bool said = false;
+    for (const auto& l : lines) {
+        if (contains(l, "reprojected EPSG:32631")) said = true;
+        if (contains(l, "r2d_raster_utm")) {
+            CHECK(contains(l, "warped px"));
+            std::printf("   %s\n", l.c_str());
+        }
+    }
+    CHECK(said);
+
+    // The map in UTM: the image is read as it is, the Lambert board warped.
+    std::vector<std::string> ws;
+    map.setCrs(*crsFromText("EPSG:32631", error), ws);
+    CHECK(map.layerReprojection(1).empty());
+    CHECK(contains(map.layerReprojection(0), "EPSG:31370 -> EPSG:32631"));
+    const View u = *makeView({kUtmX, kUtmY - 400, kUtmX + 400, kUtmY}, ImageSize{40, 40});
+    auto exact = CairoImage::create(ImageSize{40, 40}, error);
+    exact->canvas().clear(Color::fromHex(0xFFFFFF));
+    map.render(exact->canvas(), u);
+    CHECK(channel(*exact, 15, 15, 2) == cell(1, 1).r && channel(*exact, 15, 15, 1) == cell(1, 1).g);
+    CHECK(channel(*exact, 0, 0, 2) == cell(0, 0).r);   // no turned corner: the file itself
+
+    // A palette: the nearest pixel, the classes' colours exactly.
+    Map classes = Map::open({{board, {}}, {writeUtm("r2d_raster_classes.tif", true), {}}});
+    CHECK(!anyWarning(classes.warnings(), "r2d_raster_classes"));
+    auto pimg = CairoImage::create(ImageSize{220, 220}, error);
+    pimg->canvas().clear(Color::fromHex(0xFFFFFF));
+    classes.render(pimg->canvas(), v);
+    const unsigned char want[4][3] = {{230, 30, 30}, {30, 160, 30}, {30, 30, 230}, {240, 220, 0}};
+    for (const auto& [col, row] : {std::pair{0, 0}, {1, 0}, {2, 0}, {3, 0}, {1, 2}}) {
+        const Point c = cellCentre(col, row);
+        const std::uint32_t p = pixelAt(*pimg, v, toLambert(c.x, c.y));
+        const auto* k = want[(col + row) % 4];
+        CHECK(redOf(p) == k[0] && greenOf(p) == k[1] && blueOf(p) == k[2]);
+    }
+
     // The map's CRS is the first DECLARED one, even under a raster without.
     Map below = Map::open({{writeDsm(true), {}}, {board, {}}});
     CHECK(below.crs().epsg == 31370);
+    CHECK(anyWarning(map.warnings(), "r2d_raster_dsm: no CRS declared"));
 }
 
 } // namespace
@@ -337,6 +466,6 @@ int main() {
     testReduced(board);
     testDsm();
     testOnMap(board);
-    testCrs(board);
+    testWarped(board);
     return check::summary();
 }
