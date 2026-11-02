@@ -36,7 +36,7 @@ the code follows them.
 | 4b-1 | Reprojection on the fly of vector layers (PROJ): `--crs`, `crs:` in the config, each layer converted to the map's system | done |
 | 4b-2 | Rasters in another system, warped on the fly (a warped VRT, the file's overviews, transparent corners) | done |
 | 4c-1 | Web basemaps: WMS, WMTS and tiles (OpenStreetMap) through GDAL, a cache on the disk, clipped to the map system's area, ready files in `basemaps/` | done |
-| 4c-2 | Attributions on the map | |
+| 4c-2 | Attributions on the map (`attribution:` per layer, OpenStreetMap's by itself), `--no-attribution` for tiles | done |
 | — | Clipping, simplification | |
 | 5 | Full command line, JSON warnings | |
 | 6 | Raster tiles `z/x/y`, through a separate `tiles2d` tool that calls render2d per tile | |
@@ -353,6 +353,12 @@ lists the layers. What render2d adds:
   extent: the first view is the data's;
 - a server that does not answer within 10 s gives a warning; the other
   layers are drawn.
+
+Each visible layer's attribution is written in the bottom-right corner:
+`attribution: "UrbIS © Brussels Region"` for a layer in the map file, and
+"© OpenStreetMap contributors" by itself for OpenStreetMap's tiles.
+`--no-attribution` leaves the image without them (for the tiles of a
+pyramid: tiles2d uses it, the web page shows the text once).
 
 The report gives the zoom level read:
 

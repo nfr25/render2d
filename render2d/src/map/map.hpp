@@ -36,6 +36,8 @@ struct LayerSpec {
     int                        colour = -1;      // default style's colour; -1 = its position (§58)
     std::string                crs;              // §70: its system, declared here ("EPSG:31300"), for a file
                                                  // that says none or a wrong one; "" = the file's
+    std::string                attribution;      // §73: "© ..." written on the map; "" = the source's own
+                                                 // (OpenStreetMap's for its tiles), else none
 };
 
 struct LayerReport {
@@ -55,6 +57,8 @@ struct MapReport {
     double                   labelsMs    = 0.0;
     bool                     stopped     = false; // `stop` said true: layers skipped, no labels
     std::vector<std::string> warnings;            // found during this render
+    std::vector<std::string> attributions;        // §73: of the visible layers in the view, each once; written
+                                                  // on the image unless setAttributions(false)
 };
 
 // One feature touched by Map::queryAt (notions §53).
@@ -122,12 +126,18 @@ public:
     std::optional<Envelope> layerExtent(int i) const;   // §70: the extent in the map's CRS (Zoom to layer)
     const std::string& layerReprojection(int i) const;  // §70: "EPSG:4326 -> ... by ...", or ""
     const CrsInfo&     layerCrs(int i) const;           // §70: the declared one (LayerSpec::crs), else the file's
+    const std::string& layerAttribution(int i) const;   // §73: the map file's, else the source's ("" = none)
     const std::vector<FieldDef>& layerFields(int i) const;   // the columns of the query's attributes
     bool             visible(int i) const;
     void             setVisible(int i, bool on);
 
     double pixelRatio() const { return pixelRatio_; }
     void   setPixelRatio(double r);    // re-scales from the original styles. §46
+
+    // §73: the attributions written in the bottom-right corner of the image
+    // (true, the default). False for the tiles of a pyramid (tiles2d): every
+    // tile would carry them; the web page shows them once, in its corner.
+    void setAttributions(bool on) { attributions_ = on; }
 
     // Every visible layer, then all their labels. `stop` is asked before each
     // layer; when it returns true, the rest is skipped (report.stopped).
@@ -172,6 +182,7 @@ private:
     double                              pixelRatio_ = 1.0;
     CrsInfo                             crs_;               // §70: the map's system
     bool                                crsGiven_ = false;  // by --crs / crs: (else from the first layer)
+    bool                                attributions_ = true;   // §73
 };
 
 } // namespace r2d

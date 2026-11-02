@@ -92,6 +92,20 @@ same `--out` folder as the `tiles:` line of `viewer.yaml`
 `pip install -e .` makes tiles2d importable from anywhere (and adds a
 `tiles2d` command); otherwise viewer2d finds it next to itself.
 
+## Web basemaps (render2d 0.4.10)
+
+The tiles are drawn with `--no-attribution`: a layer's attribution
+(© OpenStreetMap contributors...) would be on every tile; the web page
+shows it once. A web service's layer gets its own name
+(`layer=Ortho2024NS` gives the folder `Ortho2024NS`).
+
+**No pyramid of OpenStreetMap.** Their usage policy forbids pre-loading
+areas or zoom levels: tiles2d stops before downloading anything when a
+layer's address or XML description points to `openstreetmap.org`. For a
+pyramid with a background, the Region's services (CC0) or one's own tile
+server; OpenStreetMap stays for viewer2d, which asks only for the views
+someone looks at.
+
 ## Next
 
 MBTiles output (one SQLite file, rows flipped: TMS convention).

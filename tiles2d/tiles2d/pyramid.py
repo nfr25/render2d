@@ -64,9 +64,34 @@ def render_command(render2d: str, layer: Layer, bbox: grid.Envelope, size: int, 
     if layer.crs:
         cmd += ['--layer-crs', layer.crs]
     cmd += ['--crs', layer.map_crs]
+    # A layer's attribution (OpenStreetMap's...) would be written on every
+    # tile: the web page shows it once, in its corner (render2d §73, 0.4.10).
+    cmd += ['--no-attribution']
     cmd += ['--bbox', *(f'{v:.6f}' for v in bbox), '--size', f'{size}x{size}',
             '--background', 'none', '-o', out]
     return cmd
+
+
+def pyramid_refused(source: str) -> str | None:
+    """Why a pyramid may not be built from this source, or None.
+
+    OpenStreetMap's tile servers are run by volunteers; their usage policy
+    forbids exactly what a pyramid is: pre-loading areas and zoom levels in
+    advance (render2d §73). Seen in the address, or in the XML description
+    of the service (render2d's basemaps/osm.xml)."""
+    text = source
+    path = Path(source.split('::')[0])
+    if path.suffix.lower() == '.xml' and path.is_file():
+        try:
+            text += path.read_text(encoding='utf-8', errors='replace')[:1 << 20]
+        except OSError:
+            pass
+    if 'openstreetmap.org' in text:
+        return ('OpenStreetMap\'s tiles may not be downloaded in advance (their usage policy: '
+                'no pre-seeding of areas or zoom levels). Use them in viewer2d, which asks only '
+                'for the views someone looks at; for a pyramid, the Region\'s services (CC0) '
+                'or one\'s own tile server.')
+    return None
 
 
 def _save_atomic(img: Image.Image, path: Path) -> None:

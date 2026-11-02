@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "map/map.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdarg>
@@ -97,6 +98,29 @@ LayerRenderStats renderRaster(GdalRaster& raster, Canvas& cv, const View& v, con
 
 } // namespace
 
+// §73: "© OpenStreetMap contributors | UrbIS © Brussels Region" in the
+// bottom-right corner, small, dark grey on a light veil, as web maps do:
+// readable on any background, never hiding much.
+void drawAttributions(Canvas& cv, const View& v, const std::vector<std::string>& texts) {
+    std::string text;
+    for (const auto& t : texts) text += (text.empty() ? "" : " | ") + t;
+    const double r = v.pixelRatio > 0.0 ? v.pixelRatio : 1.0;
+    FontStyle font;
+    font.size = 11.0 * r;
+    const TextExtents te = cv.measureText(text, font);
+    const double pad = 3.0 * r;
+    const double w = te.advance + 2.0 * pad, h = font.size + 2.0 * pad;
+    const double x0 = v.size.width - w, y0 = v.size.height - h;
+    cv.moveTo({x0, y0});
+    cv.lineTo({x0 + w, y0});
+    cv.lineTo({x0 + w, y0 + h});
+    cv.lineTo({x0, y0 + h});
+    cv.closePath();
+    cv.fill(FillStyle{Color{1.0, 1.0, 1.0, 0.75}}, PathMode::Consume);
+    cv.addText(text, font, Affine::translation(x0 + pad, y0 + pad + font.size * 0.8));
+    cv.fill(FillStyle{Color::fromHex(0x333333)}, PathMode::Consume);
+}
+
 // ---- one layer: what lives as long as the map (§46) --------------------------
 
 struct Map::Layer {
@@ -104,6 +128,7 @@ struct Map::Layer {
     std::unique_ptr<GdalRaster> raster;          // ...or a raster (§65): one of the two
     int                        index = 0;        // the default style colour: its position when opened (§46), kept when it moves (§58)
     bool                       visible = true;
+    std::string                attribution;      // §73: the map file's, else the source's
 
     std::optional<Style>       style;            // from --style, as read (original)
     std::optional<Style>       scaledStyle;      // the same, times the pixel ratio
@@ -175,6 +200,7 @@ std::unique_ptr<Map::Layer> Map::openLayer(const LayerSpec& spec, int colour,
         else warnings.push_back(layer->info().name + ": crs: " + why + " (the file's own is used)");
     }
     layer->visible = spec.visible;
+    layer->attribution = spec.attribution.empty() ? layer->info().attribution : spec.attribution;   // §73
 
     // Style file: warnings are reported, a bad file falls back to the default.
     if (spec.style) {
@@ -333,6 +359,8 @@ std::optional<Envelope> Map::layerExtent(int i) const {
 
 const CrsInfo& Map::layerCrs(int i) const { return layers_.at(static_cast<std::size_t>(i))->crs(); }
 
+const std::string& Map::layerAttribution(int i) const { return layers_.at(static_cast<std::size_t>(i))->attribution; }
+
 const std::string& Map::layerReprojection(int i) const {
     static const std::string none;
     const Layer& layer = *layers_.at(static_cast<std::size_t>(i));
@@ -407,6 +435,24 @@ MapReport Map::render(Canvas& cv, const View& view, const std::function<bool()>&
         if (rs.outside)     warn(li.name + ": " + std::to_string(rs.outside) + " features outside the map's system skipped");
     }
 
+    // §73: the attributions of the visible layers that reach the view, each
+    // once, in drawing order; written last, above everything.
+    if (!report.stopped) {
+        const Point a = v.imageToWorld.apply({0.0, 0.0});
+        const Point b = v.imageToWorld.apply({static_cast<double>(v.size.width), static_cast<double>(v.size.height)});
+        const Envelope seen{std::min(a.x, b.x), std::min(a.y, b.y), std::max(a.x, b.x), std::max(a.y, b.y)};
+        for (int i = 0; i < layerCount(); ++i) {
+            const Layer& layer = *layers_[static_cast<std::size_t>(i)];
+            if (!layer.visible || layer.unusable || layer.attribution.empty()) continue;
+            if (const auto e = layerExtent(i);
+                e && (e->xmax < seen.xmin || e->xmin > seen.xmax || e->ymax < seen.ymin || e->ymin > seen.ymax))
+                continue;
+            if (std::find(report.attributions.begin(), report.attributions.end(), layer.attribution) ==
+                report.attributions.end())
+                report.attributions.push_back(layer.attribution);
+        }
+    }
+
     // The labels of all the layers, on top. §35. Not for an abandoned view.
     if (!labels.empty() && !report.stopped) {
         const auto l0 = Clock::now();
@@ -414,6 +460,7 @@ MapReport Map::render(Canvas& cv, const View& view, const std::function<bool()>&
         report.labelsMs    = std::chrono::duration<double, std::milli>(Clock::now() - l0).count();
         report.hasLabels   = true;
     }
+    if (attributions_ && !report.attributions.empty()) drawAttributions(cv, v, report.attributions);   // §73
     return report;
 }
 
@@ -573,6 +620,7 @@ std::vector<std::string> reportLines(const MapReport& r) {
     }
 
     if (r.hasLabels) lines.push_back(format("  labels %zu drawn %.1f ms", r.labelsDrawn, r.labelsMs));
+    for (const auto& t : r.attributions) lines.push_back("  attribution: " + t);   // §73
     if (r.stopped)   lines.push_back("  (stopped: a newer view was asked for)");
     return lines;
 }

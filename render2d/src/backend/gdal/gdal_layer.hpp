@@ -39,6 +39,7 @@ struct LayerInfo {
     bool                    hasGeometry = true;   // false: a table of attributes only (a GeoPackage's domains)
     std::string             rasterKind;           // §66: "RGB", "grey 13 to 99.56"...
     bool                    web = false;          // §73: a web service (WMS, WMTS, tiles): a basemap
+    std::string             attribution;          // §73: what its source asks to write on the map ("" = nothing known)
 };
 
 // "3.13.2": for --version (the rest of the program does not include GDAL).

@@ -71,6 +71,7 @@ struct WebSource {
     std::string open;          // the address, or the XML description itself
     bool        web = false;
     std::string name;          // empty: the usual name (the file's)
+    std::string attribution;   // §73: OpenStreetMap's, for its tiles
 };
 
 // GDAL's XML description of the service a "WMS:" address opens: what
@@ -119,6 +120,10 @@ WebSource webSource(const std::string& path) {
         w.web  = true;
         w.open = withWebCache(text);
     }
+    // §73: OpenStreetMap's servers ask for their attribution on every map.
+    // Forgetting it should not be possible: said by the source itself.
+    if (w.web && (path.find("openstreetmap.org") != std::string::npos || text.find("openstreetmap.org") != std::string::npos))
+        w.attribution = "\u00A9 OpenStreetMap contributors";
     return w;
 }
 
@@ -289,6 +294,7 @@ std::unique_ptr<GdalRaster> GdalRaster::open(const std::string& path, std::strin
     info.name   = web.name.empty() ? std::string(CPLGetBasename(path.c_str())) : web.name;
     const char* driver = ds.GetDriver() ? ds.GetDriver()->GetDescription() : "";
     info.web    = web.web || EQUAL(driver, "WMS") || EQUAL(driver, "WMTS");
+    info.attribution = web.attribution;
     info.raster = true;
     info.crs    = crsInfo(ds.GetSpatialRef());
     info.extent = im.extent;

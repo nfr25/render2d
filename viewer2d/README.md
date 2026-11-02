@@ -5,11 +5,6 @@ mouse. After each move, viewer2d runs `render2d` for the visible area and shows
 the image, with render2d's report (scale, counts, timings, warnings) and the
 exact command line below the map.
 
-![viewer2d in a browser: parcels, buildings, addresses and trees in Brussels](docs/img/viewer2d.png)
-
-*viewer2d at 1:2,280: parcels, buildings, a dot per door and the street trees.
-Brussels, UrbIS data.*
-
 It is a separate project: it only knows render2d's command line, not its code.
 Version 1.2 needs **render2d 0.3.8 or later**: render2d reads `viewer.yaml`
 itself (`render2d --config viewer.yaml ...`), and viewer2d checks the version
@@ -53,6 +48,15 @@ Relative paths are read from the folder of `viewer.yaml` (the same rule as
 render2d and editor2d). Two optional keys per layer: `visible: false` (not
 drawn at start; unchecked in tile mode) and `title: Bâtiments` (the name shown
 in the page). Any other unknown key gives a warning: often a typo.
+
+Web basemaps (render2d 0.4.9, its notes §73) are layers like the others, usually
+first: `source: ../render2d/basemaps/osm.xml`, `../render2d/basemaps/urbis-ortho-2024.xml`,
+or a `"WMTS:..."` / `"WMS:..."` address (between quotes; kept as written). A
+layer may say what to credit: `attribution: "UrbIS © Brussels Region"`;
+OpenStreetMap's is added by itself. render2d writes them in the corner of
+each view; in tile mode the tiles carry none (`--no-attribution`) and the
+page shows them once, in its corner. OpenStreetMap's tiles are for the views
+someone looks at: never pre-computed with tiles2d (it refuses).
 
 To tune a style, edit its YSLD file and move the map slightly: every view runs
 render2d again, which reads the style again. No restart needed.

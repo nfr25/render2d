@@ -14,6 +14,7 @@ describes a map for both tools.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from pathlib import Path
 
 import yaml
@@ -46,7 +47,12 @@ class MapConfig:
 
 def layer_name(source: str, taken: set[str]) -> str:
     """Folder name of a layer's pyramid, from its source file name. Shared with viewer2d."""
-    base = source.split('::')[-1] if '::' in source else Path(source.replace('\\', '/')).stem
+    web = re.search(r'[,&?](?:layer|layers)=([^,&]+)', source, re.IGNORECASE) \
+        if source.upper().startswith(('WMTS:', 'WMS:')) else None   # render2d §73: a web service's layer
+    if web:
+        base = web.group(1)
+    else:
+        base = source.split('::')[-1] if '::' in source else Path(source.replace('\\', '/')).stem
     base = ''.join(c if c.isalnum() or c in '-_' else '_' for c in base) or 'layer'
     name, k = base, 2
     while name in taken:                 # two layers from files with the same name

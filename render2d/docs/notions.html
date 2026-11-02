@@ -2135,7 +2135,7 @@ render2d --config Z:/projects/projet_renderer/render2d/viewer2d/viewer.yaml --si
     <li>On colle : <code>Z:/projects/projet_renderer/render2d/viewer2d/../render2d/styles/parcelles.yaml</code>.</li>
     <li>« <code>..</code> » remonte d'un dossier : <code>viewer2d/..</code> s'annule. Reste <code>Z:/projects/projet_renderer/render2d/render2d/styles/parcelles.yaml</code>.</li>
   </ol></div>
-  <p>Restent tels quels : un chemin complet (<code>C:/nfr/…</code>), une connexion (<code>PG:…</code>). Et <code>fichier.gpkg::batiments</code> : seule la partie avant <code>::</code> est un chemin.</p>
+  <p>Restent tels quels : un chemin complet (<code>C:/data/…</code>), une connexion (<code>PG:…</code>). Et <code>fichier.gpkg::batiments</code> : seule la partie avant <code>::</code> est un chemin.</p>
   <div class="poterne"><strong>Dans la vraie vie</strong>
     <p>Une fiche de recette rangée dans un classeur : « la farine est dans le pot à gauche de ce classeur ». La fiche reste juste si on déménage le classeur avec ses pots ; elle ne dépend pas de la pièce où se trouve le cuisinier qui la lit.</p>
   </div>
@@ -2289,7 +2289,7 @@ std::string relativeToFolder(const std::string&amp; path, const std::string&amp;
   </ul>
   <div class="calc"><strong><code>relativeToFolder</code>, le fichier étant dans <code>Z:/cartes</code></strong><ol>
     <li><code>Z:/cartes/data/batiments.fgb</code> : les morceaux <code>Z:</code>, <code>cartes</code> sont ceux du dossier ; il reste <code>data</code>, <code>batiments.fgb</code> → <strong><code>data/batiments.fgb</code></strong>.</li>
-    <li><code>C:/nfr/gdal_render/data/arbres.fgb</code> : le premier morceau, <code>C:</code>, diffère déjà → complet.</li>
+    <li><code>C:/data/render/data/arbres.fgb</code> : le premier morceau, <code>C:</code>, diffère déjà → complet.</li>
     <li><code>Z:/cartes-old/a.fgb</code> : <code>cartes-old</code> n'est pas <code>cartes</code> (on compare des morceaux entiers, pas des lettres) → complet.</li>
     <li>Sous Windows, <code>z:\Cartes</code> et <code>Z:/cartes</code> sont le même dossier : la comparaison ignore la casse et le sens des barres.</li>
   </ol></div>

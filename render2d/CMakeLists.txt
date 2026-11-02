@@ -156,7 +156,7 @@ target_link_libraries(test_reproject PRIVATE r2d_map r2d_cairo r2d_warnings)
 add_test(NAME reproject COMMAND test_reproject)
 
 add_executable(test_web tests/test_web.cpp)   # §73: web basemaps, without the network
-target_link_libraries(test_web PRIVATE r2d_map r2d_warnings)
+target_link_libraries(test_web PRIVATE r2d_map r2d_cairo r2d_warnings)
 target_compile_definitions(test_web PRIVATE R2D_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_test(NAME web COMMAND test_web)
 

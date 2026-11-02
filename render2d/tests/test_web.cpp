@@ -10,10 +10,12 @@
 #include <fstream>
 #include <string>
 
+#include "backend/cairo/cairo_image.hpp"
 #include "backend/gdal/gdal_layer.hpp"
 #include "backend/gdal/gdal_raster.hpp"
 #include "backend/gdal/gdal_reproject.hpp"
 #include "check.hpp"
+#include "map/config.hpp"
 #include "map/map.hpp"
 
 using namespace r2d;
@@ -151,6 +153,87 @@ void testClip() {
     CHECK(u.has_value() && u->xmax - u->xmin < 1001.0);
 }
 
+// §73 (4c-2): the attributions. OpenStreetMap's said by its source; one
+// from the map file; written in the corner unless switched off.
+// NEVER draws a web layer: a test must not depend on the network, nor
+// download OpenStreetMap's tiles at every run (their usage policy). It
+// did on 2 November, and failed where the network worked: OSM's tiles
+// covered the corner.
+void testAttribution() {
+    auto squareAt = [](const char* name, double x0) {
+        return writeText(name, std::string(R"({"type":"FeatureCollection",
+ "crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:EPSG::31370"}},
+ "features":[{"type":"Feature","properties":{},"geometry":{"type":"Polygon",
+   "coordinates":[[[)") + std::to_string(x0) + R"(,170000],[)" + std::to_string(x0 + 1000) + R"(,170000],[)" +
+                                     std::to_string(x0 + 1000) + R"(,171000],[)" + std::to_string(x0) +
+                                     R"(,171000],[)" + std::to_string(x0) + R"(,170000]]]}}]})");
+    };
+    LayerSpec parcels(squareAt("r2d_web_square2.geojson", 148000));
+    parcels.attribution = "UrbIS © Brussels Region";
+    LayerSpec other(squareAt("r2d_web_square3.geojson", 148000));
+    other.attribution = "Test © Somebody";
+
+    // OpenStreetMap's: said by its source, opened only (nothing downloaded).
+    Map withOsm = Map::open({LayerSpec((kBasemaps / "osm.xml").string()), parcels});
+    CHECK(withOsm.layerAttribution(0) == "© OpenStreetMap contributors");
+    CHECK(withOsm.layerAttribution(1) == "UrbIS © Brussels Region");
+
+    std::string error;
+    Map map = Map::open({parcels, other, parcels});   // the same text twice: written once
+    const View view = *makeView({148000, 170000, 149000, 171000}, ImageSize{300, 300});
+    auto img = CairoImage::create(ImageSize{300, 300}, error);
+    img->canvas().clear(Color::fromHex(0x000000));
+    const MapReport rep = map.render(img->canvas(), view);
+    CHECK(rep.attributions.size() == 2);
+    if (rep.attributions.size() == 2) {   // in drawing order, each once
+        CHECK(rep.attributions[0] == "UrbIS © Brussels Region");
+        CHECK(rep.attributions[1] == "Test © Somebody");
+    }
+    bool line = false;
+    for (const auto& l : reportLines(rep)) if (contains(l, "attribution: Test © Somebody")) line = true;
+    CHECK(line);
+    auto at = [](CairoImage& i, int x, int y) { return i.pixels()[y * i.stride() + x * 4 + 1]; };   // green
+    const int veil = at(*img, 298, 296);   // the light veil, bottom right
+    const int under = at(*img, 150, 150);   // what is drawn elsewhere (the squares' fill)
+    CHECK(veil > 150 && veil != under);
+
+    map.setAttributions(false);    // a tile of a pyramid
+    img->canvas().clear(Color::fromHex(0x000000));
+    const MapReport bare = map.render(img->canvas(), view);
+    CHECK(bare.attributions.size() == 2);   // still known (for the web page)...
+    CHECK(at(*img, 298, 296) == under);      // ...but not written: the squares' fill in the corner too
+
+    // A layer away from the view: its attribution is not written.
+    const View far = *makeView({100000, 100000, 100100, 100100}, ImageSize{50, 50});
+    auto small = CairoImage::create(ImageSize{50, 50}, error);
+    const MapReport away = Map::open({parcels}).render(small->canvas(), far);
+    CHECK(away.attributions.empty());
+}
+
+// The map file: attribution: read and written; web sources kept as written
+// (not joined to the file's folder like a relative path).
+void testConfig() {
+    const std::string wmts = "WMTS:https://geoservices-grid.irisnet.be/geowebcache/service/wmts?service=wmts"
+                             "&request=GetCapabilities&version=1.0.0,layer=Ortho2024NS,tilematrixset=EPSG:31370";
+    const std::string yaml = writeText("r2d_web_map.yaml", "layers:\n"
+        "  - source: \"" + wmts + "\"\n"
+        "  - source: \"WMS:https://example.invalid/wms?LAYERS=a&SRS=EPSG:31370\"\n"
+        "  - source: \"https://example.invalid/data.fgb\"\n"
+        "  - source: parcels.shp\n"
+        "    attribution: \"UrbIS \u00A9 Brussels Region\"\n");
+    const ConfigResult r = loadConfig(yaml);
+    CHECK(r.error.empty() && r.config.layers.size() == 4);
+    if (r.config.layers.size() != 4) return;
+    CHECK(r.config.layers[0].source == wmts);
+    CHECK(r.config.layers[1].source.rfind("WMS:https://", 0) == 0);
+    CHECK(r.config.layers[2].source == "https://example.invalid/data.fgb");
+    CHECK(r.config.layers[3].source != "parcels.shp");   // a file: joined to the folder
+    CHECK(r.config.layers[3].attribution == "UrbIS \u00A9 Brussels Region");
+    const std::string text = configText(r.config, yaml);
+    CHECK(contains(text, "source: '" + wmts + "'"));   // written as read, not made relative
+    CHECK(contains(text, "attribution: 'UrbIS \u00A9 Brussels Region'"));
+}
+
 } // namespace
 
 int main() {
@@ -159,5 +242,7 @@ int main() {
     testIdentity();
     testOpen();
     testClip();
+    testAttribution();
+    testConfig();
     return check::summary();
 }

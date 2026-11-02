@@ -19,7 +19,7 @@ from PIL import Image, ImageChops  # noqa: E402
 
 from tiles2d import cache, grid  # noqa: E402
 from tiles2d.config import Layer  # noqa: E402
-from tiles2d.pyramid import build_layer, cut_metatile, render_command, tile_path  # noqa: E402
+from tiles2d.pyramid import build_layer, cut_metatile, pyramid_refused, render_command, tile_path  # noqa: E402
 
 
 def test_cut_metatile():
@@ -66,6 +66,29 @@ def test_render_command_crs():
     cmd = render_command('render2d', layer, (0, 0, 256, 256), 256, 'm.png')
     assert cmd[1] == 'old.shp' and cmd[2:4] == ['--layer-crs', 'EPSG:31300']   # right after its SOURCE
     assert cmd[cmd.index('--crs') + 1] == 'EPSG:3857'
+    assert '--no-attribution' in cmd   # render2d §73: not on every tile
+
+
+def test_pyramid_refused():
+    assert pyramid_refused('parcels.shp') is None
+    assert pyramid_refused('WMTS:https://geoservices-grid.irisnet.be/geowebcache/service/wmts?request='
+                           'GetCapabilities,layer=Ortho2024NS') is None
+    with tempfile.TemporaryDirectory() as t:   # also run without pytest (python tests/test_pyramid.py)
+        osm = Path(t) / 'osm.xml'
+        osm.write_text('<GDAL_WMS><Service name="TMS"><ServerUrl>https://tile.openstreetmap.org/'
+                       '${z}/${x}/${y}.png</ServerUrl></Service></GDAL_WMS>', encoding='utf-8')
+        assert 'usage policy' in pyramid_refused(str(osm))
+    assert pyramid_refused('WMS:https://ows.openstreetmap.org/wms?LAYERS=a') is not None
+
+
+def test_web_layer_names():
+    from tiles2d.config import layer_name
+    taken: set[str] = set()
+    assert layer_name('WMTS:https://x/wmts?request=GetCapabilities,layer=Ortho2024NS,tilematrixset=EPSG:31370',
+                      taken) == 'Ortho2024NS'
+    assert layer_name('WMS:https://x/wms?SERVICE=WMS&LAYERS=UrbISNotLabeledGray&SRS=EPSG:31370', taken) \
+        == 'UrbISNotLabeledGray'
+    assert layer_name('basemaps/osm.xml', taken) == 'osm'
 
 
 def test_seam_with_render2d():

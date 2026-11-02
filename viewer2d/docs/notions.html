@@ -255,12 +255,12 @@ ui.run()</pre>
 <section id="config">
   <h2>8. La configuration, et pourquoi le navigateur n'envoie que des nombres</h2>
   <p>Le visualiseur lit un petit fichier <code>viewer.yaml</code> au démarrage :</p>
-  <pre>render2d: C:/nfr/gdal_render/render2d/build-release/render2d.exe
+  <pre>render2d: C:/data/render/render2d/build-release/render2d.exe
 layers:
-  - source: C:/nfr/gdal_render/data/shp/parcelles.shp
-    style:  C:/nfr/gdal_render/render2d/styles/parcelles.yaml
-  - source: C:/nfr/gdal_render/data/shp/UrbISBuildings_04000_Buildings.shp
-    style:  C:/nfr/gdal_render/render2d/styles/batiments.yaml
+  - source: C:/data/render/data/shp/parcelles.shp
+    style:  C:/data/render/render2d/styles/parcelles.yaml
+  - source: C:/data/render/data/shp/UrbISBuildings_04000_Buildings.shp
+    style:  C:/data/render/render2d/styles/batiments.yaml
 start:                      # vue de départ, en Lambert 72
   bbox: [148000, 168000, 152000, 172000]</pre>
   <p>Le navigateur n'envoie jamais de nom de fichier ni de morceau de commande : <strong>seulement six nombres</strong>, que FastAPI a déjà vérifiés. Les fichiers et le chemin de <code>render2d</code> viennent de la configuration, côté serveur. Même pour un outil local, c'est la bonne habitude : une adresse qu'on pourrait trafiquer pour lancer n'importe quelle commande serait une faille, et ici, il n'y a rien à trafiquer.</p>

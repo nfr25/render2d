@@ -29,7 +29,7 @@ RENDER_ENV = {**os.environ, 'OPENBLAS_NUM_THREADS': '1', 'OMP_NUM_THREADS': '1'}
 
 # render2d reads viewer.yaml itself since 0.3.8 (--config, notions §11), and
 # converts layers in other systems since 0.4.5 (--crs, render2d notes §70).
-MIN_RENDER2D = (0, 4, 5)
+MIN_RENDER2D = (0, 4, 10)   # 0.4.9: web basemaps; 0.4.10: --no-attribution (render2d §73)
 
 
 def parse_version(line: str) -> tuple[int, int, int] | None:

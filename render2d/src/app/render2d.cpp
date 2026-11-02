@@ -49,6 +49,8 @@ const char* kUsage =
     "  --crs CRS              the map's coordinate system, in metres: EPSG:31370, EPSG:3857...\n"
     "                         (default: crs: of --config, else the first layer's; EPSG:3857 if\n"
     "                         that one is in degrees). Layers in another are converted (§70)\n"
+    "  --no-attribution       do not write the layers' attributions (\u00A9 OpenStreetMap...)\n"
+    "                         in the corner: for the tiles of a pyramid, shown by the web page\n"
     "  --bbox XMIN YMIN XMAX YMAX   area to draw, in the map's CRS (default: all the layers)\n"
     "  --size W[xH]           image size (default: 1000 wide, height from the bbox shape)\n"
     "  --background RRGGBB|none     default FFFFFF; none = transparent\n"
@@ -84,6 +86,7 @@ struct SourceSpec {
 struct Options {
     std::optional<std::string> config;   // --config: viewer.yaml (§57)
     std::string              crs;        // --crs (§70)
+    bool                     attributions = true;   // --no-attribution (§73): for the tiles of a pyramid
     std::vector<SourceSpec>  sources;
     std::optional<Envelope>  bbox;
     int                      width  = 1000;
@@ -129,6 +132,8 @@ bool parseArgs(int argc, char** argv, Options& o) {
         } else if (a == "--crs") {
             if (!need(1)) return false;
             o.crs = argv[++i];
+        } else if (a == "--no-attribution") {   // §73
+            o.attributions = false;
         } else if (a == "--bbox") {
             if (!need(4)) return false;
             double v[4];
@@ -441,6 +446,7 @@ int main(int argc, char** argv) {
         }
     }
     Map map = Map::open(specs, opt.pixelRatio, crs);
+    map.setAttributions(opt.attributions);   // §73
     for (const auto& w : map.warnings()) warn(w);
     if (map.empty()) {
         for (const auto& w : warnings) std::fprintf(stderr, "error: %s\n", w.c_str());

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from nicegui import ui
 
-from .config import Config
+from .config import Config, attribution_of
 
 if TYPE_CHECKING:                 # only for the type hint: tiles2d is not needed without tile mode
     from .tiles import TileService
@@ -57,4 +57,14 @@ def register(cfg: Config, tile_service: TileService | None) -> None:
                                'titles': {t.name: c.label() for t, c in zip(tile_service.layers, cfg.layers)},
                                'hidden': [t.name for t, c in zip(tile_service.layers, cfg.layers) if not c.visible],
                                'root': str(tile_service.root)} if tile_service else None)}
+        # render2d §73: in view mode render2d writes the attributions on its
+        # image; tiles are drawn without them (tiles2d --no-attribution), so
+        # the page shows them once, in Leaflet's corner.
+        if tile_service:
+            said: list[str] = []
+            for layer in cfg.layers:
+                a = attribution_of(layer)
+                if a and a not in said:
+                    said.append(a)
+            settings['attributions'] = said
         ui.run_javascript(f'viewer2dInit({json.dumps(settings)})')

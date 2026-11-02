@@ -105,7 +105,40 @@ start:
     assert parse_version('render2d 0.3.8 (step 3h: --config), built Oct 22 2026') == (0, 3, 8)
     assert parse_version('render2d 0.3.7 (step 3g: querying a zone)') < MIN_RENDER2D
     assert parse_version('render2d 0.4.4') < MIN_RENDER2D   # no --crs yet
-    assert parse_version('render2d 0.4.5') == MIN_RENDER2D
+    assert parse_version('render2d 0.4.5') < MIN_RENDER2D   # no web basemaps, no --no-attribution
+    assert parse_version('render2d 0.4.9') < MIN_RENDER2D    # no --no-attribution yet
+    assert parse_version('render2d 0.4.10') == MIN_RENDER2D
+
+
+def test_web_sources_and_attribution():
+    """render2d §73: web services kept as written, not taken for files; the
+    attribution: key, and OpenStreetMap's found by itself."""
+    assert config.not_a_file('WMTS:https://x/wmts?request=GetCapabilities,layer=Ortho2024NS')
+    assert config.not_a_file('WMS:https://x/wms?LAYERS=a')
+    assert config.not_a_file('https://example.org/data.fgb')
+    assert config.not_a_file('PG:host=dbserver dbname=gis')
+    assert not config.not_a_file('C:/data/parcels.shp')
+    assert not config.not_a_file('data/parcels.shp')
+    with tempfile.TemporaryDirectory() as t:
+        tmp = Path(t)
+        (tmp / 'osm.xml').write_text('<GDAL_WMS><Service name="TMS"><ServerUrl>https://tile.openstreetmap.org/'
+                                     '${z}/${x}/${y}.png</ServerUrl></Service></GDAL_WMS>', encoding='utf-8')
+        wmts = 'WMTS:https://x/wmts?request=GetCapabilities,layer=Ortho2024NS'
+        cfg = config.load(make_config(tmp, """
+render2d: {exe}
+layers:
+  - source: osm.xml
+  - source: "%s"
+  - source: {d}/parcelles.shp
+    attribution: "UrbIS (c) Brussels Region"
+start:
+  bbox: [150000, 160000, 155000, 165000]
+""" % wmts))
+        assert not any('unknown' in w or 'not found' in w for w in cfg.warnings), cfg.warnings
+        assert cfg.layers[1].source == wmts                       # not joined to the folder
+        assert config.attribution_of(cfg.layers[0]) == config.OSM_ATTRIBUTION
+        assert config.attribution_of(cfg.layers[1]) is None
+        assert config.attribution_of(cfg.layers[2]) == 'UrbIS (c) Brussels Region'
     assert parse_version('something else') is None
 
 

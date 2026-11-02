@@ -26,6 +26,7 @@ class Layer:
     visible: bool = True        # visible: false -> not drawn at start (§11)
     title: str | None = None    # a readable name for the page
     crs: str | None = None      # its system, declared (render2d §70); None = the file's
+    attribution: str | None = None   # attribution: in viewer.yaml (render2d §73); None = the source's own
 
     def label(self) -> str:
         """The title, or the file name."""
@@ -64,14 +65,41 @@ KNOWN_KEYS = {'render2d', 'crs', 'layers', 'start', 'max_parallel', 'tiles', 'me
 # in other systems (render2d §70): an OSM extract alone, in degrees, would
 # otherwise make it choose Web Mercator on its own.
 DEFAULT_CRS = 'EPSG:31370'
-LAYER_KEYS = {'source', 'style', 'visible', 'title', 'crs'}
+LAYER_KEYS = {'source', 'style', 'visible', 'title', 'crs', 'attribution'}
+OSM_ATTRIBUTION = '\u00a9 OpenStreetMap contributors'
+
+
+def not_a_file(value: str) -> bool:
+    """A database (PG:...), a web service (WMS:..., WMTS:..., render2d §73), an
+    address (https://...) or a description given as text (<GDAL_WMS>...):
+    kept as written, never joined to the file's folder, never checked on disk."""
+    if value.startswith(('PG:', 'WMS:', 'WMTS:', '<')):
+        return True
+    scheme = value.find('://')
+    return scheme > 0 and value[:scheme].isalpha()   # "https://...", not "C:/..." nor "data/a://b"
+
+
+def attribution_of(layer: 'Layer') -> str | None:
+    """What the layer asks to show on the map: viewer.yaml's attribution:, else
+    OpenStreetMap's for its tiles (seen in the address or in the XML file, as
+    render2d does, render2d §73)."""
+    if layer.attribution:
+        return layer.attribution
+    text = layer.source
+    file = Path(layer.source.split('::')[0])
+    if file.suffix.lower() == '.xml' and file.is_file():
+        try:
+            text += file.read_text(encoding='utf-8', errors='replace')[:1 << 20]
+        except OSError:
+            pass
+    return OSM_ATTRIBUTION if 'openstreetmap.org' in text else None
 
 
 def resolve(value: str, folder: Path) -> str:
     """A path written in the file, read from the file's folder (§11, render2d §57).
     Kept as written: connection strings (PG:...), full paths (C:/..., /data/...).
     In "file.gpkg::layer", only the part before "::" is a path."""
-    if value.startswith('PG:'):
+    if not_a_file(value):
         return value
     file, sep, layer = value.rpartition('::')
     if not sep:
@@ -127,9 +155,10 @@ def load(path: str | Path) -> Config:
         layer = Layer(resolve(str(item['source']), folder),
                       resolve(str(item['style']), folder) if item.get('style') else None,
                       visible, str(item['title']) if item.get('title') else None,
-                      str(item['crs']) if item.get('crs') else None)
-        # Connection strings (PG:...) are not files: only check real paths.
-        if not layer.source.startswith('PG:') and not Path(layer.source.split('::')[0]).exists():
+                      str(item['crs']) if item.get('crs') else None,
+                      str(item['attribution']) if item.get('attribution') else None)
+        # Connection strings (PG:..., WMS:...) are not files: only check real paths.
+        if not not_a_file(layer.source) and not Path(layer.source.split('::')[0]).exists():
             warnings.append(f'layer source not found: {layer.source}')
         if layer.style and not Path(layer.style).is_file():
             warnings.append(f'style not found: {layer.style} (render2d will use its default)')

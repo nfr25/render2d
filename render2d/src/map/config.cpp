@@ -21,8 +21,18 @@ namespace fs = std::filesystem;
 
 // "styles/a.yaml" next to the config file -> its full path (§57). Absolute
 // paths, GDAL connection strings ("PG:...") and "file::layer" keep their form.
+// Not a file: a database ("PG:..."), a web service ("WMS:...", "WMTS:...",
+// §73), an address ("https://..."), or a description given as text
+// ("<GDAL_WMS>..."). Kept as written, never joined to the file's folder.
+bool notAFile(const std::string& value) {
+    for (const char* prefix : {"PG:", "WMS:", "WMTS:", "<"})
+        if (value.rfind(prefix, 0) == 0) return true;
+    const auto scheme = value.find("://");
+    return scheme != std::string::npos && value.find_first_of("/\\") >= scheme;
+}
+
 std::string resolve(const std::string& value, const fs::path& folder) {
-    if (value.rfind("PG:", 0) == 0) return value;
+    if (notAFile(value)) return value;
     std::string file = value, layer;
     if (const auto sep = value.rfind("::"); sep != std::string::npos) {
         file  = value.substr(0, sep);
@@ -75,7 +85,7 @@ std::string number(double x) {
 } // namespace
 
 std::string relativeToFolder(const std::string& value, const std::string& folder) {
-    if (value.rfind("PG:", 0) == 0 || folder.empty()) return value;
+    if (notAFile(value) || folder.empty()) return value;
     std::string file = value, layer;
     if (const auto sep = value.rfind("::"); sep != std::string::npos) {
         file  = value.substr(0, sep);
@@ -114,6 +124,7 @@ std::string configText(const Config& config, const std::string& path) {
         if (!l.visible) o << "    visible: false\n";
         if (!l.title.empty()) o << "    title: " << quoted(l.title) << "\n";
         if (!l.crs.empty()) o << "    crs: " << quoted(l.crs) << "\n";   // §70
+        if (!l.attribution.empty()) o << "    attribution: " << quoted(l.attribution) << "\n";   // §73
     }
     if (config.startBbox) {
         const Envelope& b = *config.startBbox;
@@ -193,7 +204,7 @@ ConfigResult loadConfig(const std::string& path) {
                 result.error = where + "expected 'source' (and optionally 'style')";
                 return result;
             }
-            unknownKeys(item, {"source", "style", "visible", "title", "crs"}, where, result.warnings);
+            unknownKeys(item, {"source", "style", "visible", "title", "crs", "attribution"}, where, result.warnings);
             LayerSpec spec;
             try {
                 spec.source = resolve(item["source"].as<std::string>(), folder);
@@ -202,6 +213,7 @@ ConfigResult loadConfig(const std::string& path) {
                 if (item["visible"]) spec.visible = item["visible"].as<bool>();
                 if (item["title"]) spec.title = item["title"].as<std::string>();
                 if (item["crs"]) spec.crs = item["crs"].as<std::string>();   // §70: checked by the Map
+                if (item["attribution"]) spec.attribution = item["attribution"].as<std::string>();   // §73
             } catch (const YAML::Exception&) {
                 result.error = where + "'visible' must be true or false";
                 return result;

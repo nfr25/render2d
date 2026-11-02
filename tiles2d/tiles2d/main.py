@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import cache, config, grid, preview
-from .pyramid import build_layer
+from .pyramid import build_layer, pyramid_refused
 
 
 def _parse_bbox(values):
@@ -61,6 +61,11 @@ def main() -> None:
         if missing:
             sys.exit(f"tiles2d: unknown layer(s) {', '.join(sorted(missing))}; "
                      f"available: {', '.join(l.name for l in cfg.layers)}")
+
+    for layer in layers:   # render2d §73: before anything is downloaded
+        why = pyramid_refused(layer.source)
+        if why:
+            sys.exit(f'tiles2d: {layer.name}: {why}')
 
     out = Path(a.out)
     zooms = range(a.zmin, a.zmax + 1)

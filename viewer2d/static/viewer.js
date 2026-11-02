@@ -23,6 +23,10 @@ window.viewer2dInit = function (settings) {
   });
   const [x0, y0, x1, y1] = settings.bbox;
   map.fitBounds(L.latLngBounds(xy(x0, y0), xy(x1, y1)));
+  // render2d §73: tiles carry no attribution; the page shows them once.
+  if (settings.attributions && settings.attributions.length) {
+    L.control.attribution({ prefix: false }).addAttribution(settings.attributions.join(' | ')).addTo(map);
+  }
 
   map.on('mousemove', (e) => {
     if (cursorEl) cursorEl.textContent = `X ${fmt(e.latlng.lng)}   Y ${fmt(e.latlng.lat)}`;
