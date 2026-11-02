@@ -18,6 +18,7 @@
 #  include <unistd.h>
 #endif
 
+#include <cpl_conv.h>
 #include <cpl_error.h>
 #include <gdal_priv.h>
 #include <ogr_geometry.h>
@@ -161,12 +162,48 @@ void findDataBesideExecutable() {
     }
 }
 
+// §73: what web services need, set once. A variable set by the user wins:
+// CPLGetConfigOption also reads the environment.
+std::string g_userAgent = "render2d (+https://github.com/nfr25/render2d)";
+std::string g_webCache;
+bool        g_userAgentFromUser = false;
+
+void setIfUnset(const char* key, const std::string& value) {
+    if (CPLGetConfigOption(key, nullptr) == nullptr) CPLSetConfigOption(key, value.c_str());
+}
+
+std::filesystem::path userCacheFolder() {
+#ifdef _WIN32
+    if (const char* d = std::getenv("LOCALAPPDATA"); d && *d) return std::filesystem::path(d) / "render2d" / "cache";
+#else
+    if (const char* d = std::getenv("XDG_CACHE_HOME"); d && *d) return std::filesystem::path(d) / "render2d";
+    if (const char* h = std::getenv("HOME"); h && *h) return std::filesystem::path(h) / ".cache" / "render2d";
+#endif
+    std::error_code ec;
+    return std::filesystem::temp_directory_path(ec) / "render2d-cache";
+}
+
+void setupWeb() {
+    g_userAgentFromUser = CPLGetConfigOption("GDAL_HTTP_USERAGENT", nullptr) != nullptr;
+    setIfUnset("GDAL_HTTP_USERAGENT", g_userAgent);
+    // A server that does not answer must not hold the map: 10 s, then a warning.
+    setIfUnset("GDAL_HTTP_CONNECTTIMEOUT", "10");
+    setIfUnset("GDAL_HTTP_TIMEOUT", "10");
+    // The tiles kept on the disk, one folder per user, shared by render2d,
+    // editor2d and viewer2d; used by every source carrying <Cache /> (§73,
+    // guaranteed by GdalRaster::open).
+    setIfUnset("GDAL_ENABLE_WMS_CACHE", "YES");
+    setIfUnset("GDAL_DEFAULT_WMS_CACHE_PATH", utf8(userCacheFolder() / "web"));
+    g_webCache = CPLGetConfigOption("GDAL_DEFAULT_WMS_CACHE_PATH", "");
+}
+
 } // namespace
 
 void gdalInit() {
     static std::once_flag once;
     std::call_once(once, [] {
         findDataBesideExecutable();
+        setupWeb();
         GDALAllRegister();
         CPLSetErrorHandler(CPLQuietErrorHandler);
     });
@@ -179,7 +216,20 @@ const std::string& projDataFolder() {
 
 std::vector<std::string> gdalDataInfo() {
     gdalInit();
-    return {"GDAL data: " + g_gdalData, "PROJ data: " + g_projData};
+    return {"GDAL data: " + g_gdalData, "PROJ data: " + g_projData,
+            "web: " + std::string(CPLGetConfigOption("GDAL_HTTP_USERAGENT", "")) + ", cache " + g_webCache};
+}
+
+void setWebIdentity(const std::string& userAgent) {
+    gdalInit();
+    if (g_userAgentFromUser || userAgent.empty()) return;   // the user's own wins
+    g_userAgent = userAgent;
+    CPLSetConfigOption("GDAL_HTTP_USERAGENT", userAgent.c_str());
+}
+
+std::string webCacheFolder() {
+    gdalInit();
+    return g_webCache;
 }
 
 CrsInfo crsInfo(const OGRSpatialReference* srs) {

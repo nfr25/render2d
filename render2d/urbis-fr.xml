@@ -1,0 +1,24 @@
+<GDAL_WMS>
+  <Service name="WMS">
+    <Version>1.1.1</Version>
+    <ServerUrl>https://geoservices-urbis.irisnet.be/geoserver/BaseMaps/wms?SERVICE=WMS</ServerUrl>
+    <Layers>UrbISFrenchLabeledColor</Layers>
+    <SRS>EPSG:31370</SRS>
+    <ImageFormat>image/jpeg</ImageFormat>
+    <Transparent>FALSE</Transparent>
+    <BBoxOrder>xyXY</BBoxOrder>
+  </Service>
+  <DataWindow>
+    <UpperLeftX>21991.63253589799</UpperLeftX>
+    <UpperLeftY>244027.2116964629</UpperLeftY>
+    <LowerRightX>295167.070044775</LowerRightX>
+    <LowerRightY>21162.16053197249</LowerRightY>
+    <SizeX>1073741824</SizeX>
+    <SizeY>875992105</SizeY>
+  </DataWindow>
+  <BandsCount>3</BandsCount>
+  <BlockSizeX>1024</BlockSizeX>
+  <BlockSizeY>1024</BlockSizeY>
+  <OverviewCount>20</OverviewCount>
+  <Cache />
+</GDAL_WMS>

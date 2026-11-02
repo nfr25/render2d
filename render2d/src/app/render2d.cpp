@@ -388,6 +388,9 @@ void printZoneQuery(Map& map, const View& view, const std::vector<Point>& zone, 
 } // namespace
 
 int main(int argc, char** argv) {
+    // §73: how render2d presents itself to web services (the program, not the person).
+    setWebIdentity(std::string("render2d/") + kVersion + " (+https://github.com/nfr25/render2d)");
+
     Options opt;
     if (!parseArgs(argc, argv, opt)) return 2;
 

@@ -175,8 +175,9 @@ th{background:var(--code)}
   <a href="#reproject">70. Reprojecting on the fly</a>
   <a href="#osm">71. Testing with OpenStreetMap</a>
   <a href="#warp">72. Rasters in another system, warped on the fly</a>
-  <a href="#refs">73. References</a>
-  <a href="#road">74. Roadmap</a>
+  <a href="#web">73. Web basemaps: the design</a>
+  <a href="#refs">74. References</a>
+  <a href="#road">75. Roadmap</a>
 </nav>
 
 <!-- ============================================================== -->
@@ -2483,11 +2484,11 @@ PG:host=db.example.org dbname=gis user=gisuser::urbis.buildings      (another sc
   <p>The password typed in that dialog: <code>setSessionPassword(connection, password)</code> (render2d 0.4.2) keeps it in memory, attached to the connection; every GDAL opening of that connection gets <code>password=…</code> added, and nothing else sees it (the source, the yaml, the messages). The <code>PGPASSWORD</code> variable, tried first, was not seen by <code>libpq.dll</code> on Windows.</p>
   <h3>No password typed: render2d looks where libpq would <span class="tag">0.4.6</span></h3>
   <p>On 30 October, with nothing typed, neither the dialog nor a <code>viewer.yaml</code> opened the database: "no password supplied", although libpq is supposed to read <code>PGPASSWORD</code> and <code>pgpass.conf</code> itself. Rather than guess why on that machine, render2d now looks itself, in libpq's order, and adds what it finds to what GDAL receives (never to the source, the yaml or a message):</p>
-  <div class="calc"><strong>For <code>PG:host=192.168.129.21 dbname=bdd_sig user=nfr</code></strong><ol>
+  <div class="calc"><strong>For <code>PG:host=dbserver dbname=gis_data user=reader</code></strong><ol>
     <li>A password typed this session for this connection (above).</li>
     <li>The <code>PGPASSWORD</code> variable of render2d's own environment.</li>
-    <li>The password file: <code>PGPASSFILE</code>, else <code>%APPDATA%\postgresql\pgpass.conf</code> on Windows (<code>~/.pgpass</code> elsewhere). Its first line <code>host:port:database:user:password</code> matching <strong>192.168.129.21 : 5432 : bdd_sig : nfr</strong>, <code>*</code> matching anything, <code>\:</code> a colon in a password. The port not written in the string is 5432, as for libpq; the user not written is the Windows user.</li>
-    <li>Nothing found: GDAL's message is followed by where render2d looked, for instance "(no password: typed none this session; PGPASSWORD: not set; C:\Users\…\AppData\Roaming\postgresql\pgpass.conf: no line for 192.168.129.21:5432:bdd_sig:nfr)". The usual culprits then show at once: a line written for another host name ("localhost", "server") or port, or Notepad's <code>pgpass.conf.txt</code>.</li>
+    <li>The password file: <code>PGPASSFILE</code>, else <code>%APPDATA%\postgresql\pgpass.conf</code> on Windows (<code>~/.pgpass</code> elsewhere). Its first line <code>host:port:database:user:password</code> matching <strong>dbserver : 5432 : gis_data : reader</strong>, <code>*</code> matching anything, <code>\:</code> a colon in a password. The port not written in the string is 5432, as for libpq; the user not written is the Windows user.</li>
+    <li>Nothing found: GDAL's message is followed by where render2d looked, for instance "(no password: typed none this session; PGPASSWORD: not set; C:\Users\…\AppData\Roaming\postgresql\pgpass.conf: no line for dbserver:5432:gis_data:nfr)". The usual culprits then show at once: a line written for another host name ("localhost", "server") or port, or Notepad's <code>pgpass.conf.txt</code>.</li>
   </ol></div>
   <p class="muted">The same day: a source written <code>PG:…connect_timeout=5::::municipalities</code> (the separator doubled) is read as <code>PG:…connect_timeout=5</code> and the table <code>municipalities</code> (<code>splitSource</code>): a connection string never ends with a colon.</p>
 
@@ -3006,8 +3007,228 @@ map: EPSG:31370 (BD72 / Belgian Lambert 72), 1200x960 px, 0.417 m/px, scale 1:14
 </section>
 
 <!-- ============================================================== -->
+<section id="web">
+  <h2>73. Web basemaps: the design <span class="tag">step 4c</span></h2>
+  <p>A basemap from the web: OpenStreetMap's tiles under the UrbIS buildings, the Region's 2024 orthophoto without downloading 6.4 GB (§72), the UrbIS basemap as background. The first item of carto2D's 1.0 list after the rasters.</p>
+
+  <h3>What GDAL already does: a web service is a raster</h3>
+  <p>GDAL reads a tile server or a map server as one immense raster, through its <strong>WMS driver</strong> (which also speaks TMS, the <code>z/x/y</code> tiles of OSM) and its <strong>WMTS driver</strong>. Its pixels are fetched over HTTP when a window is read, its zoom levels are its overviews. For render2d, it is a raster like a GeoTIFF: the reader of §65 and §66 asks for the view's window, GDAL takes the right zoom level, downloads the tiles under the view, and gives the pixels. In another system, the warped VRT of §72 does the rest. Most of step 4c is therefore already written; what remains is to be a good citizen of the web.</p>
+  <p>Three ways to name the source, all GDAL's own (no syntax of our own):</p>
+  <ul>
+    <li><strong>An XML file</strong> describing the service, for tile servers (TMS): §71 gives the one for OpenStreetMap. render2d will ship it ready, <code>basemaps/osm.xml</code>.</li>
+    <li><strong><code>WMTS:</code></strong> followed by the GetCapabilities address and the layer: the Region's orthophotos, already in Lambert 72, 2004 to 2024 (CC0 licence, public domain):
+<pre>WMTS:https://geoservices-grid.irisnet.be/geowebcache/service/wmts?service=wmts&amp;request=GetCapabilities&amp;version=1.0.0,layer=&lt;name&gt;</pre></li>
+    <li><strong><code>WMS:</code></strong> followed by the server's address: the UrbIS basemaps (CC0 too), which GeoServer draws in Lambert 72 on demand:
+<pre>WMS:https://geoservices-urbis.irisnet.be/geoserver/BaseMaps/ows?SERVICE=WMS&amp;VERSION=1.3.0&amp;LAYERS=&lt;name&gt;&amp;CRS=EPSG:31370</pre></li>
+  </ul>
+  <p>The layers' exact names are in the services' GetCapabilities: <code>gdalinfo</code> lists them (the first test below, before any code).</p>
+
+  <h3>What remains for render2d: five rules</h3>
+
+  <h4>1. Saying who we are (the User-Agent)</h4>
+  <p>Every HTTP request carries a <em>User-Agent</em>, the program's name. OpenStreetMap's tile servers are run by volunteers; their policy asks for a name that identifies the application, stable, with a contact, and blocks without notice the generic ones (a library's default, <code>curl</code>...). render2d sets GDAL's <code>GDAL_HTTP_USERAGENT</code> once, at start:</p>
+<pre>render2d/0.4.9 (+https://github.com/nfr25/render2d)</pre>
+  <p>unless the user has set it himself. editor2d will give its own name (carto2D later). The XML files no longer need their own <code>&lt;UserAgent&gt;</code>.</p>
+
+  <h4>2. A cache on the disk, in the user's folder</h4>
+  <p>GDAL's WMS driver keeps the tiles it downloads in a disk cache. Its default place is a <code>gdalwmscache</code> folder in the <em>current</em> folder: wherever render2d happens to be started, a new cache. render2d sets <code>GDAL_DEFAULT_WMS_CACHE_PATH</code> to one folder per user, shared by render2d, editor2d and viewer2d:</p>
+<pre>Windows: %LOCALAPPDATA%\render2d\cache\web      Linux: ~/.cache/render2d/web</pre>
+  <p>A tile is kept 7 days (GDAL's default, <code>&lt;Cache&gt;&lt;Expires&gt;</code>), which is exactly OSM's rule for a cache that does not read the server's dates ("keep each tile for at least 7 days"). The second view of a place downloads nothing. The report will say how many tiles came from the web and how many from the cache, when GDAL tells it.</p>
+
+  <h4>3. A web layer covers the world: clip it to the map's system</h4>
+  <p>OpenStreetMap's raster is the whole Earth in Web Mercator: 134,217,728 pixels a side at zoom 19, 19 overviews. Warped as it is into Lambert 72 (§72), it gives this, measured:</p>
+  <div class="calc"><ol>
+    <li>Without a limit: a warped image of 382,615,138 × 335,496,746 pixels of 0.68 m, starting at X = −129,784 km: <strong>260,000 km</strong> wide. Lambert 72 is made for Belgium; at the antipodes its formulas still give numbers, but they mean nothing. And "zoom to all" would show that.</li>
+    <li>With the limit <code>-te 0 0 300000 300000</code> (a square of 300 km around Belgium, in Lambert): 1,630,440 pixels a side of 0.184 m, the 19 overviews kept, prepared in 31 ms.</li>
+    <li>Why 0.184 m: the finest OSM pixel, zoom 19, is 156,543.03 ÷ 2<sup>19</sup> = 0.2986 Mercator metres; Mercator enlarges by 1 ÷ cos(latitude), so on the ground at 50.85°: 0.2986 × 0.6312 = 0.188 m. gdalwarp keeps the same finesse.</li>
+  </ol></div>
+  <p>The limit: the <strong>area of use of the map's system</strong>, which PROJ knows for each one (for Lambert 72, Belgium: 2.5° to 6.4° E, 49.5° to 51.51° N), converted to the map's coordinates. A web layer is warped only there. Outside it, nothing is drawn, and nothing would be meaningful anyway.</p>
+  <p>And a web layer does not count in the map's extent ("zoom to all", the first view): the map opens on the data, not on Belgium, nor on the world. Alone, it opens on the area of use.</p>
+
+  <h4>4. The attribution, on the image</h4>
+  <p>OpenStreetMap asks for "© OpenStreetMap contributors", visible, usually bottom right, never hidden. A layer gets an <code>attribution:</code> key in the map file; render2d writes the attributions of the visible layers in the bottom-right corner of the image, small, with a halo; editor2d in the corner of its map. For a source on <code>openstreetmap.org</code>, render2d adds OSM's by itself when the map file gives none: forgetting it should not be possible. The Region's services are CC0: no attribution required, "UrbIS © Brussels Region" given as courtesy.</p>
+
+  <h4>5. When the network fails</h4>
+  <ul>
+    <li>A tile that does not exist (outside the world, a 404): transparent, without a word (<code>&lt;ZeroBlockHttpCodes&gt;</code>).</li>
+    <li>A server that does not answer: a time limit (<code>GDAL_HTTP_TIMEOUT</code>, 10 s), then a warning; the other layers are drawn. A map is never lost because of the web.</li>
+    <li>Offline: the tiles already in the cache are still shown.</li>
+  </ul>
+
+  <h3>What stays forbidden: the pyramid of OSM</h3>
+  <p>tiles2d builds a pyramid of tiles in advance (§71: no tiles2d pyramid of the Region from OSM's servers). OpenStreetMap forbids exactly that: pre-loading areas or zoom levels, archives of tiles, automatic sweeps. Only the views someone looks at may be downloaded. tiles2d will refuse a map that contains an OSM layer for a pyramid, with the reason; viewer2d, which draws the tiles one person is looking at, stays within the rule. For a pyramid with a basemap: the Region's services (their own tiles, CC0), or one's own tile server.</p>
+
+  <h3>The cost, in numbers</h3>
+  <p>§71 counted 35 to 48 OSM tiles for a 1,200 × 900 Lambert view at 0.5 m per pixel, the first time; none the next times. GDAL downloads them in parallel (a few connections at a time). Expected: a second or two the first time on a home connection, then the speed of a local file. The UrbIS WMTS, already in Lambert, needs no warping; the WMS draws one image per request, on the server.</p>
+
+  <h3>The tests of 2 November, before any code, and where one pulls one's hair out</h3>
+  <p>Everything below was done with GDAL's own tools and render2d 0.4.8, on a Windows PC, in the Windows command prompt (<code>cmd</code>). Each step is given with what it showed, and each trap with its reason: web services, caches and environment variables are where one usually loses an afternoon.</p>
+
+  <h4>1. What a WMTS offers: gdalinfo on its GetCapabilities</h4>
+<pre>gdalinfo "WMTS:https://geoservices-grid.irisnet.be/geowebcache/service/wmts?service=wmts&amp;request=GetCapabilities&amp;version=1.0.0"</pre>
+  <p>GDAL reads the service's description (its <em>GetCapabilities</em>, an XML document) and lists what can be opened, one <code>SUBDATASET_n_NAME</code> per layer and per system: 12 layers × 3 systems = 36 lines, such as</p>
+<pre>SUBDATASET_5_NAME=WMTS:https://...?service=wmts&amp;request=GetCapabilities&amp;version=1.0.0,layer=Ortho2024NS,tilematrixset=EPSG:31370
+SUBDATASET_5_DESC=Layer Ortho2024NS, tile matrix set EPSG:31370</pre>
+  <ul>
+    <li>The layers: <code>Ortho</code> (no year), <code>Ortho2024NS</code> / <code>EO</code>, <code>2022</code> and <code>2021</code> likewise (two flights, on north-south and on east-west lines: the façades lean differently), <code>Ortho2024NIRNS</code> / <code>NIREO</code> (near infrared, the "false colours" where vegetation shows red), <code>Ortho2023</code>, <code>2012</code>, <code>2004</code>.</li>
+    <li>The systems (<code>tilematrixset</code>): <code>EPSG:31370</code> (Lambert 72), <code>EPSG:4326</code> (degrees) and <code>EPSG:900913</code>, the old name of Web Mercator (3857): "google" written in digits, a joke of the time. <strong>Rule: when the service offers the map's system, take it</strong>: no warping, sharper and faster.</li>
+    <li>What is opened is the <code>..._NAME</code> line <em>without</em> its <code>SUBDATASET_n_NAME=</code> prefix, from <code>WMTS:</code> on.</li>
+  </ul>
+
+  <h4>2. The trap of the &amp;: always between double quotes</h4>
+  <p>A service's address is full of <code>&amp;</code>. For <code>cmd</code> as for bash, a bare <code>&amp;</code> means "and then run another command": the address is cut in two, and the error speaks of something else entirely. The whole source goes between double quotes, every time.</p>
+
+  <h4>3. render2d 0.4.8 already draws the WMTS</h4>
+<pre>render2d "WMTS:https://...,layer=Ortho2024NS,tilematrixset=EPSG:31370" --bbox 148800 170600 149000 170800 -o grand-place-wmts.png</pre>
+  <p>200 × 200 m on the Grand-Place, 1,000 × 1,000 pixels, 0.2 m per pixel: the 2024 orthophoto, the Town Hall, the crowd. Not a line of code: for render2d, a WMTS in Lambert is a raster like a GeoTIFF. But the report gave <strong>12,190.6 ms</strong>, and a strange name:</p>
+<pre>  wmts?service=wmts&amp;request=GetCapabilities&amp;version=1.0 raster 1000x1000 px from 5890x5890 file px (averaged)   12190.6 ms</pre>
+  <p>The name is "the file name" of an address: to be replaced by the layer's name for a web source (4c-1).</p>
+
+  <h4>4. Environment variables: not the same syntax in cmd and in bash</h4>
+  <p>GDAL is configured by <em>environment variables</em>: named values that a program finds around it when it starts. The cache, for a test:</p>
+  <table>
+    <tr><th></th><th>Windows command prompt (cmd)</th><th>MSYS2 UCRT64 terminal (bash)</th></tr>
+    <tr><td>For the rest of the window</td><td><code>set GDAL_ENABLE_WMS_CACHE=YES</code><br><code>set GDAL_DEFAULT_WMS_CACHE_PATH=C:\temp\wmscache</code></td><td><code>export GDAL_ENABLE_WMS_CACHE=YES</code><br><code>export GDAL_DEFAULT_WMS_CACHE_PATH=/c/temp/wmscache</code></td></tr>
+    <tr><td>For one command only</td><td>(none)</td><td><code>GDAL_ENABLE_WMS_CACHE=YES render2d ...</code></td></tr>
+    <tr><td>To see the value</td><td><code>echo %GDAL_ENABLE_WMS_CACHE%</code></td><td><code>echo $GDAL_ENABLE_WMS_CACHE</code></td></tr>
+    <tr><td>For good, for every program</td><td colspan="2">Windows: Settings ▸ "Edit environment variables for your account" (as for <code>PGPASSWORD</code>, §67); open a <em>new</em> window afterwards. Linux: a line <code>export ...</code> in <code>~/.bashrc</code>.</td></tr>
+  </table>
+  <p>The traps: in <code>cmd</code>, no space around the <code>=</code> (<code>set A = B</code> defines a variable named "A " with the value " B"); bash's one-command form typed in <code>cmd</code> gives "'GDAL_ENABLE_WMS_CACHE' is not recognized as an internal or external command" (it happened); a variable set in one window does not exist in another, nor in a program started from the Start menu. That is why render2d will set its cache itself (4c-1), instead of counting on variables.</p>
+
+  <h4>5. The effect of the cache, in three times</h4>
+  <table>
+    <tr><th>Run</th><th>Read</th><th>Where the tiles came from</th></tr>
+    <tr><td>First, no cache</td><td>12,190.6 ms</td><td>the server, which had to fetch them from its storage ("cold")</td></tr>
+    <tr><td>With the cache, first</td><td>1,600.0 ms</td><td>the server, now "warm", over the network</td></tr>
+    <tr><td>With the cache, second</td><td><strong>68.5 ms</strong></td><td>the disk</td></tr>
+  </table>
+  <p>The first time depends on the server, not on us: GeoWebCache (the program serving these tiles) takes them out of its storage on the first request, then keeps them at hand. The cache divides the time by 23.</p>
+
+  <h4>6. What the cache looks like on the disk: 16 folders that are not 16 levels</h4>
+  <p>In <code>C:\temp\wmscache</code>: folders named <code>0</code> to <code>9</code> and <code>a</code> to <code>f</code>, each with sub-folders named the same way. One would think of 16 zoom levels; it is not that. For each tile, GDAL computes a fingerprint of its address (an MD5, 32 hexadecimal characters such as <code>3f9a0c...</code>), and files the tile in the folder of its first character, then the sub-folder of its second. The point is to spread the files: one folder of 100,000 tiles is slow to list on Windows. The tiles of one level are scattered among the 16 folders. To count them:</p>
+<pre>cmd:   dir /s /b /a-d C:\temp\wmscache | find /c /v ""
+bash:  find /c/temp/wmscache -type f | wc -l</pre>
+  <div class="calc"><strong>42 tiles: the right level?</strong><ol>
+    <li>200 m covered by 5,890 pixels of the service: 3.4 cm per pixel at its finest level.</li>
+    <li>At the finest level, a tile of 256 pixels covers 256 × 0.034 = 8.7 m; 200 ÷ 8.7 = 23 a side: about <strong>530 tiles</strong>.</li>
+    <li>The view asks for 0.2 m per pixel, 5.9 times coarser: GDAL takes the level reduced 4 times, 13.6 cm per pixel. A tile covers 256 × 0.136 = 34.8 m; 200 ÷ 34.8 = 5.75, so 6 or 7 a side depending on where the edges fall: <strong>36 to 49 tiles</strong>.</li>
+    <li>42: GDAL took the level just fine enough, then averaged, exactly as with a GeoTIFF's overviews (§65).</li>
+  </ol></div>
+  <p>The cache can be deleted at any time: it is only a copy, GDAL downloads again what is missing.</p>
+
+  <h4>7. A WMS: an invented image of a billion pixels</h4>
+<pre>gdalinfo "WMS:https://geoservices-urbis.irisnet.be/geoserver/BaseMaps/ows?"</pre>
+  <p>8 layers: <code>UrbISFrenchLabeled</code>, <code>DutchLabeled</code>, <code>FrenchDutchLabeled</code> (both, as on Brussels' street signs) and <code>NotLabeled</code> (no text: the best background under one's own data, our labels do not fight with its own), each <code>Color</code> or <code>Gray</code>. Their <code>BBOX</code> covers the whole of Belgium (X from 21,992 to 295,167): rule 3 above, a web layer does not count in "zoom to all".</p>
+  <p>render2d 0.4.8 draws it too, the street names sharp. But the report says <code>from 786119x786119 file px</code> for 200 m:</p>
+  <div class="calc"><ol>
+    <li>200 m ÷ 786,119 = 0.25 mm per pixel. Absurd for a map.</li>
+    <li>A WMS draws at any scale: GDAL does not know its finesse. Opened from an address, it invents an image of 2<sup>30</sup> = 1,073,741,824 pixels across the BBOX: 273,175 m ÷ 1,073,741,824 = 0.25 mm per pixel, with 20 overviews, halving each time.</li>
+    <li>For 0.2 m per pixel, GDAL takes the level 0.25 mm × 512 = 13 cm, asks the server for images at that level, and averages them. The picture is right; the report's number means nothing for a service. In 4c-1, the report will say, for a web source, the level read and the tiles downloaded or taken from the cache.</li>
+  </ol></div>
+
+  <h4>8. The cache that did not work: the &lt;Cache /&gt; line</h4>
+  <p>The WMS twice, the two variables still set: 6,936.6 ms, then 6,488.6 ms. The cache folder still held 42 files: the WMS images had not gone in. The WMTS driver builds its internal description <em>with</em> a <code>&lt;Cache /&gt;</code> entry; a WMS opened from a <code>WMS:</code> address gets one <em>without</em>, and then the variables do nothing. The remedy: write the description in a file, and look at it.</p>
+<pre>gdal_translate -of WMS "WMS:https://...&amp;LAYERS=UrbISFrenchLabeledColor&amp;SRS=EPSG:31370&amp;BBOX=..." urbis-fr.xml</pre>
+  <p><code>gdal_translate -of WMS</code> (or <code>-of WMTS</code> for a WMTS) does not download any image: it writes the service's description, in a small XML file. It is that file one opens afterwards, instead of the address. What it contained, line by line:</p>
+<pre>&lt;GDAL_WMS&gt;
+  &lt;Service name="WMS"&gt;
+    &lt;Version&gt;1.1.1&lt;/Version&gt;
+    &lt;ServerUrl&gt;https://geoservices-urbis.irisnet.be/geoserver/BaseMaps/wms?SERVICE=WMS&lt;/ServerUrl&gt;
+    &lt;Layers&gt;UrbISFrenchLabeledColor&lt;/Layers&gt;
+    &lt;SRS&gt;EPSG:31370&lt;/SRS&gt;
+    &lt;ImageFormat&gt;image/jpeg&lt;/ImageFormat&gt;
+    &lt;Transparent&gt;FALSE&lt;/Transparent&gt;
+    &lt;BBoxOrder&gt;xyXY&lt;/BBoxOrder&gt;
+  &lt;/Service&gt;
+  &lt;DataWindow&gt;
+    &lt;UpperLeftX&gt;21991.63253589799&lt;/UpperLeftX&gt;
+    &lt;UpperLeftY&gt;244027.2116964629&lt;/UpperLeftY&gt;
+    &lt;LowerRightX&gt;295167.070044775&lt;/LowerRightX&gt;
+    &lt;LowerRightY&gt;21162.16053197249&lt;/LowerRightY&gt;
+    &lt;SizeX&gt;1073741824&lt;/SizeX&gt;
+    &lt;SizeY&gt;875992105&lt;/SizeY&gt;
+  &lt;/DataWindow&gt;
+  &lt;BandsCount&gt;3&lt;/BandsCount&gt;
+  &lt;BlockSizeX&gt;1024&lt;/BlockSizeX&gt;
+  &lt;BlockSizeY&gt;1024&lt;/BlockSizeY&gt;
+  &lt;OverviewCount&gt;20&lt;/OverviewCount&gt;
+  &lt;Cache /&gt;
+&lt;/GDAL_WMS&gt;</pre>
+  <table>
+    <tr><th>Line</th><th>What it says</th></tr>
+    <tr><td><code>Service</code></td><td>Who to ask (<code>ServerUrl</code>), which layer, in which system (<code>SRS</code>), in which image format. <code>image/jpeg</code>: good for a photo; for a plan with text, <code>image/png</code> is sharper (no smudges around the letters).</td></tr>
+    <tr><td><code>DataWindow</code></td><td>The invented image: the BBOX of Belgium, 2<sup>30</sup> pixels wide (point 7).</td></tr>
+    <tr><td><code>BlockSizeX/Y</code></td><td>The size of one request: here an image of 1,024 × 1,024 pixels for the server to draw.</td></tr>
+    <tr><td><code>OverviewCount</code></td><td>20 levels, halving each time.</td></tr>
+    <tr><td><code>&lt;Cache /&gt;</code></td><td><strong>Added by hand.</strong> Without it, no cache, whatever the variables say.</td></tr>
+  </table>
+  <p>With the added line, the same render twice: <strong>6,883.8 ms, then 66.2 ms</strong>. And the report's name became <code>urbis-fr</code>, the file's. <code>&lt;Cache /&gt;</code> without a <code>&lt;Path&gt;</code> uses the folder of <code>GDAL_DEFAULT_WMS_CACHE_PATH</code>, and without that variable a <code>gdalwmscache</code> folder in the <em>current</em> folder: a new cache wherever the program is started, the last trap.</p>
+  <p>The first time stays slow (6.9 s): GeoServer draws each image on demand, and an image of 1,024 × 1,024 is a big one to draw. A WMTS serves tiles already drawn.</p>
+
+  <h4>What the tests changed in the design</h4>
+  <ul>
+    <li><strong>The cache guaranteed by render2d</strong>, for every web source, whatever its form (<code>WMS:</code>, <code>WMTS:</code> or an XML file): its description is rewritten in memory with a <code>&lt;Cache&gt;</code> pointing to the user's folder (rule 2). Never counting on environment variables.</li>
+    <li><strong>The XML file is the right form</strong> for a service used often: a readable name, the settings in view, and for a WMS no description to download at each opening (a WMTS's XML still names its GetCapabilities, read at each opening: the report's "opened in" says what it costs). render2d ships them ready in <code>basemaps/</code>: <code>osm.xml</code>, the 2024 orthophoto in Lambert (WMTS), the UrbIS basemap in French without labels (WMS, in PNG, a sensible finest resolution instead of 0.25 mm).</li>
+    <li><strong>A readable name</strong> for a web source given as an address: its layer (<code>Ortho2024NS</code>).</li>
+    <li><strong>An honest report</strong> for a service: the level read, the tiles downloaded and those taken from the cache; and the time of the opening (the GetCapabilities), which the "read" does not count.</li>
+  </ul>
+
+  <h3>4c-1 as built (0.4.9, 2 November)</h3>
+  <ul>
+    <li><strong>The identity</strong>: <code>setWebIdentity()</code>, called by each program before opening anything: <code>render2d/0.4.9 (+https://github.com/nfr25/render2d)</code>, <code>editor2d/0.6.2 (+...)</code>. The program, never the person; <code>GDAL_HTTP_USERAGENT</code> set by the user wins. <code>render2d --version</code> shows it, with the cache folder.</li>
+    <li><strong>The time limit</strong>: <code>GDAL_HTTP_CONNECTTIMEOUT</code> and <code>GDAL_HTTP_TIMEOUT</code> at 10 s, unless set. A failure is said in one line, instead of GDAL's paragraph: <code>osm: the web service could not be read (CONNECT tunnel failed, response 403): not drawn, except the tiles already in the cache. Offline, or the server down?</code> (seen in the test machine, which has no network).</li>
+    <li><strong>The cache</strong>: <code>GDAL_ENABLE_WMS_CACHE=YES</code> and <code>GDAL_DEFAULT_WMS_CACHE_PATH</code> set at start (the user's folder), unless set; and <code>GdalRaster::open</code> guarantees the <code>&lt;Cache /&gt;</code>: a <code>WMS:</code> address is turned into its XML description in memory (<code>CreateCopy</code> with the WMS driver into <code>/vsimem/</code>, as <code>gdal_translate -of WMS</code> does), an XML file or text without <code>&lt;Cache</code> gets one (<code>withWebCache</code>). A <code>WMTS:</code> address keeps its own, seen working.</li>
+    <li><strong>The name</strong>: <code>webLayerName</code>, the <code>layer=</code> of a WMTS address, the first <code>LAYERS=</code> of a WMS one; an XML file keeps its file name. <code>LayerInfo::web</code> marks the layer.</li>
+    <li><strong>The clip</strong>: <code>areaOfUse(crs)</code> (PROJ's area of use, converted with 21 points per edge), shared with editor2d; a web layer is warped with <code>-te</code> over that area, or over its own extent when smaller and sensible. Measured: OpenStreetMap on a Lambert map, <strong>282 × 226 km</strong> (X 14,637 to 297,133, Y 20,909 to 246,424) instead of 260,000 km.</li>
+    <li><strong>The extent</strong>: <code>Map::extent()</code> merges the other layers; the web ones only when there is nothing else.</li>
+    <li><strong>The report</strong>: for a web layer, the level read instead of the invented "file pixels", and the opening's time: <code>osm  web 0x0 px from level 3 of 19 (1.28 m/px, averaged) ... (opened in 1.0 ms)</code>. The level is computed as GDAL chooses it: the coarsest overview at least as fine as the view (GDAL allows itself a small tolerance; the figure may differ by one level at the boundary). The tiles downloaded or taken from the cache: GDAL does not tell, so not said.</li>
+    <li><strong>The ready files</strong>, <code>basemaps/</code>: <code>osm.xml</code> (TMS, two connections at a time, the 404 tiles transparent), <code>urbis-ortho-2024.xml</code> (WMTS, Lambert), <code>urbis-fr.xml</code> and <code>urbis-plain-grey.xml</code> (WMS, PNG, 5 cm at the finest, 12 levels up to 205 m per pixel). The Windows zip carries them.</li>
+    <li><strong>The tests</strong>, <code>test_web</code>, 37 checks without network: the cache added once and only once, the names, the identity, the four files opened, OpenStreetMap clipped to Belgium, the extent of the data without the basemaps. Drawing needs the network: tested by hand, below.</li>
+    <li><strong>Not yet</strong>: tiles2d's refusal of an OSM pyramid (in tiles2d, with its next version), the attributions (4c-2).</li>
+  </ul>
+
+  <div class="demo">
+  <h3 style="margin-top:0">The result: OpenStreetMap under the cadastre, on the Grand-Place <span class="tag">2 November 2026</span></h3>
+  <p>OpenStreetMap's tiles, downloaded under render2d's name, kept in the cache, warped from Web Mercator to Lambert 72 and clipped to Belgium; the UrbIS parcels on top, read from PostGIS, as a red outline only (<code>styles/osm-outline.yaml</code>, made on 29 October to compare UrbIS and OSM, §71).</p>
+  <img src="img/grand-place-osm-parcels.jpg" alt="The Grand-Place in Brussels: OpenStreetMap's map warped to Lambert 72, the cadastral parcels drawn over it as red outlines" style="width:100%;height:auto;border:1px solid var(--line);border-radius:6px;background:#fff">
+  <p class="muted" style="margin-top:4px">200 × 200 m on the Grand-Place, 1:714, 0.2 m per pixel. Map data © OpenStreetMap contributors (ODbL); parcels: UrbIS © Brussels Region (CC0).</p>
+<pre>render2d basemaps/osm.xml "PG:host=&lt;server&gt; dbname=&lt;database&gt; user=&lt;user&gt;::parcels" --style styles/osm-outline.yaml \
+         --crs EPSG:31370 --bbox 148800 170600 149000 170800 -o grand-place-osm.png</pre>
+  <ul>
+    <li><strong>OpenStreetMap first</strong>: the first layer is drawn at the bottom. And <code>--crs EPSG:31370</code> because the first layer would otherwise give the map its own system, Web Mercator.</li>
+    <li><strong><code>--style</code> right after the source it applies to</strong>; without it, the default style fills the parcels with an opaque colour and hides OSM's buildings.</li>
+    <li>No password in the command: render2d finds it in libpq's <code>pgpass.conf</code> (§67).</li>
+    <li><strong>One line in <code>cmd</code></strong>. A copy-paste cut in two runs <code>render2d</code> alone, then a line starting with <code>basemaps\osm.xml</code>: Windows then asks "which application to open this file with?". (It happened.)</li>
+  </ul>
+  <p>The red outlines follow OSM's façades from the King's House (OSM's "Musée de la ville") to the House of the Dukes of Brabant, the bilingual street names along the parcels. Where an outline leaves a building, the two maps do not measure the same thing: <strong>the parcel is a limit on the ground</strong>, who owns what; <strong>OSM's building is mostly drawn on aerial photographs</strong>, which see the roof. A building <em>overhanging the pavement</em> (a cantilever) has a roof wider than its parcel, by exactly the overhang; cornices and balconies do the same. render2d lays one on the other without judging: the eye of the surveyor reads the difference.</p>
+  </div>
+
+  <div class="calc"><strong>The price of warping, measured (the same tiles, all in the cache)</strong><ol>
+    <li>OpenStreetMap on the Lambert map above, 1,000 × 1,000 pixels: first time <strong>1,754 ms</strong> (25 to 30 tiles from OSM's servers at zoom 19: its pixel is 0.188 m on the ground in Brussels, the only level fine enough for 0.2 m per pixel), second time <strong>720 ms</strong>.</li>
+    <li>The same tiles on a Web Mercator map (<code>--crs EPSG:3857</code>), nothing to warp: <strong>69 ms</strong> the second time.</li>
+    <li>So warping costs about 650 ms per million pixels, at each start of render2d (GDAL's memory cache, which gave 1 ms for a second read in the same program, §72, does not survive from one start to the next).</li>
+    <li>In editor2d, the render runs in its thread: a new view arrives a little later, the window never waits. For viewer2d, a Leaflet tile is 256 × 256 = 65,536 pixels, 6.5 % of a million: about <strong>40 ms</strong> per tile. The WMTS's GetCapabilities, read at each opening (300 ms), weighs more: keeping a copy of it in the cache for a day is noted for when viewer2d uses basemaps.</li>
+    <li>For the map of every day: a basemap already in the map's system (the Region's services in Lambert, or OSM on a Web Mercator map).</li>
+  </ol></div>
+
+  <div class="calc"><strong>The other measures of 4c-1, on the real services</strong><ol>
+    <li>The UrbIS WMS from its <code>WMS:</code> address, no variable set, a new cache: <strong>8,024 ms, then 107 ms</strong> (with 0.4.8: 6,937 then 6,489 ms, no cache). Report: <code>UrbISFrenchLabeledColor web 1000x1000 px from level 9 of 20 (0.13 m/px)</code>, 0.25 mm × 2<sup>9</sup>.</li>
+    <li>The 2024 orthophoto from <code>basemaps/urbis-ortho-2024.xml</code>: read <strong>1,894 ms, then 136 ms</strong>, <code>level 2 of 15 (0.136 m/px)</code> as foretold from the 42 tiles; <code>opened in</code> about <strong>300 ms</strong> both times (the GetCapabilities).</li>
+    <li><code>render2d --version</code>: <code>web: render2d/0.4.9 (+https://github.com/nfr25/render2d), cache C:\Users\&lt;user&gt;\AppData\Local\render2d\cache\web</code>; with the variable of the afternoon still set in the window, its folder instead: the user's setting wins, as intended.</li>
+  </ol></div>
+
+  <h3>The steps</h3>
+  <ol>
+    <li><strong>Before any code</strong>: GDAL alone, on the services. ✓ 2 November, above: the WMTS and the WMS of the Region already drawn by render2d 0.4.8; OpenStreetMap left for after the User-Agent.</li>
+    <li><strong>4c-1</strong> ✓ 0.4.9 (above): the User-Agent, the cache guaranteed in the user's folder, the clip to the area of use, the extent without web layers, the time limit, the readable name, the report; the ready files in <code>basemaps/</code>.</li>
+    <li><strong>4c-2</strong>: the attributions, on the image and in editor2d.</li>
+    <li>Then, in editor2d (carto2D): a "Basemap" menu with the ready ones (OpenStreetMap, the orthophotos by year, the UrbIS basemap).</li>
+  </ol>
+</section>
+
+<!-- ============================================================== -->
 <section id="refs">
-  <h2>73. References</h2>
+  <h2>74. References</h2>
   <h3>Books</h3>
   <ul class="refs">
     <li><strong>Adobe Systems, <em>PostScript Language Reference Manual</em></strong> (the "red book"), 3<sup>rd</sup> ed., 1999. The origin of the path / fill / stroke model, of the even-odd and non-zero rules, of <code>gsave</code>/<code>grestore</code>. Chapters 10 and 11.</li>
@@ -3057,7 +3278,7 @@ map: EPSG:31370 (BD72 / Belgian Lambert 72), 1200x960 px, 0.417 m/px, scale 1:14
 
 <!-- ============================================================== -->
 <section id="road">
-  <h2>74. Roadmap</h2>
+  <h2>75. Roadmap</h2>
   <ol class="road">
     <li>Step 1 — Matrix, canvas, Cairo surface: test shapes in PNG, SVG and PDF. ✓</li>
     <li>Step 2 — GDAL/OGR reading: drawing a real layer with a fixed style. ✓</li>
@@ -3076,6 +3297,7 @@ map: EPSG:31370 (BD72 / Belgian Lambert 72), 1200x960 px, 0.417 m/px, scale 1:14
     <li>Step 3n ✓ — Classifying on the command line (§63): <code>--categorize</code>, <code>--graduate</code>, <code>--write-style</code>; <code>classify()</code>, the same function for editor2d and render2d.</li>
     <li>Step 3o ✓ — Selecting by attributes (§64): <code>Map::queryWhere</code>, <code>GdalLayer::forFids</code>, <code>--where</code>. Client: editor2d's selection by expression (4a).</li>
     <li>Step 4a ✓ — Rasters (§65, §66): reading the view's window with its overviews, bands into ARGB32, transparent nodata, the <code>raster</code> symbolizer and its opacity. Same coordinate system as the map. Client: editor2d's raster layers.</li>
+    <li>Step 4c — Web basemaps (§73): OpenStreetMap's tiles, the Region's WMTS and WMS, through GDAL's drivers. 4c-1 (0.4.9) ✓ the User-Agent, the cache, the clip to the map's area of use, the extent, the report, <code>basemaps/</code>. 4c-2: the attributions.</li>
     <li>Step 4b — On-the-fly reprojection (PROJ), §69 to §71: 4b-1 (0.4.5) ✓ vectors, <code>--crs</code>, <code>crs:</code> of the map and of a layer, the conversion per layer, the catalogue for editor2d; tested on OpenStreetMap against UrbIS. 4b-2 (0.4.8) ✓ rasters warped on the fly (§72). OpenStreetMap's tiles: step 4c, with the other web basemaps.</li>
     <li>Later, after reprojection and PostGIS, once editor2d and viewer2d are rich enough: <strong>render2d as a server</strong>, a program that stays up with its map open and answers over HTTP (<code>/map</code>, <code>/tiles/z/x/y</code>, <code>/query</code>, <code>/legend</code>, a style changed live) and as a <strong>standard WMS</strong>, readable by QGIS and any GIS client. The favoured option: <code>render2d --serve</code>, a process that stays up with its map open and talks through a pipe (stdin/stdout), one JSON line per request and per answer, the image as bytes right after, with the vocabulary of editor2d's commands (<code>map.render</code>, <code>layer.add</code>…). In front of it, FastAPI (or viewer2d) keeps a small pool of these processes: a GDAL crash kills only one, they draw in parallel. The other paths stay open: an HTTP server in C++ inside render2d, or render2d as a Python module (pybind11) if every millisecond counts. Then, real time: telling the server an area has changed, redrawing, invalidating the tiles.</li>
     <li>For the map built in editor2d (its notes, §31 to §34): describing the format itself (properties, types, default values, geometries concerned) for the legend dialog and the future API; reading a field's distinct values, minimum and maximum.</li>
@@ -3086,7 +3308,7 @@ map: EPSG:31370 (BD72 / Belgian Lambert 72), 1200x960 px, 0.417 m/px, scale 1:14
     <li>Step 7 — Vector tiles (MVT): the same reading, clipping and simplification steps, an MVT encoder next to the canvas, and the translation of YSLD into a MapLibre style.</li>
   </ol>
   <p class="muted">The "style" and "reprojection" steps were swapped after the first rendering of Brussels: all the test data are in Lambert 72, and the most visible need was style (outlines wider than the buildings at small scale).</p>
-  <p class="muted">Versions follow this roadmap: <code>0.&lt;step&gt;.&lt;sub-step&gt;</code>, so 0.3.4 for step 3d, 0.3.5 for step 3e, 0.3.6 for step 3f, 0.3.7 for step 3g, 0.3.8 for step 3h, 0.3.9 for step 3i, 0.3.10 for step 3j, 0.3.11 for step 3k, 0.3.12 for step 3l, 0.3.13 for step 3m, 0.3.14 for step 3n (0.3.15: scale bands; 0.3.16: reclassifying), 0.3.17 for step 3o, 0.4.0 for step 4a (0.4.1: <code>listLayers</code>; 0.4.2: the session password; 0.4.3: tables without geometry; for editor2d; 0.4.4: the data beside the executable, for the Windows zip, §68), 0.4.5 for step 4b-1 (vectors reprojected, §70), 0.4.6: the PostGIS password looked for by render2d (§67), 0.4.7: <code>GeodesicMeter</code> (§70), 0.4.8 for step 4b-2 (rasters warped, §72). <code>render2d --version</code> shows it, with the build date and the GDAL and Cairo versions, and the report starts with it: a forgotten executable is spotted immediately.</p>
+  <p class="muted">Versions follow this roadmap: <code>0.&lt;step&gt;.&lt;sub-step&gt;</code>, so 0.3.4 for step 3d, 0.3.5 for step 3e, 0.3.6 for step 3f, 0.3.7 for step 3g, 0.3.8 for step 3h, 0.3.9 for step 3i, 0.3.10 for step 3j, 0.3.11 for step 3k, 0.3.12 for step 3l, 0.3.13 for step 3m, 0.3.14 for step 3n (0.3.15: scale bands; 0.3.16: reclassifying), 0.3.17 for step 3o, 0.4.0 for step 4a (0.4.1: <code>listLayers</code>; 0.4.2: the session password; 0.4.3: tables without geometry; for editor2d; 0.4.4: the data beside the executable, for the Windows zip, §68), 0.4.5 for step 4b-1 (vectors reprojected, §70), 0.4.6: the PostGIS password looked for by render2d (§67), 0.4.7: <code>GeodesicMeter</code> (§70), 0.4.8 for step 4b-2 (rasters warped, §72), 0.4.9 for step 4c-1 (web basemaps, §73). <code>render2d --version</code> shows it, with the build date and the GDAL and Cairo versions, and the report starts with it: a forgotten executable is spotted immediately.</p>
   <p class="muted">Decided on 31 October, for editor2d's 1.0 (renamed <strong>carto2D</strong>), what render2d must learn, in this order: rasters in another system (4b-2, §72 ✓ 2 November), web basemaps (4c: OpenStreetMap's tiles, WMTS, WMS, through GDAL's drivers), and labels without collisions, names along lines. Then the publication, automated: tests and builds on Windows and Linux at every tag, the installer, an AppImage.</p>
   <p class="muted">Next, chosen on 30 October: <strong>a demonstration package</strong>, because people try what installs with a double click. An Inno Setup installer (its compiler <code>ISCC.exe</code> called at the end of <code>tools/package-windows.sh</code>): render2d as in the Windows zip, viewer2d with an embedded Python (NiceGUI and FastAPI inside), a district of Brussels already prepared (UrbIS buildings, parcels and addresses, OSM roads, indexed GeoPackages, the styles, a <code>viewer.yaml</code> with relative paths), and a Start-menu icon that starts viewer2d and opens the browser on the Grand-Place. Notes first.</p>
   <p class="muted">Desirable, without a date: label collisions and labels straddling tile edges.</p>

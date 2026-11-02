@@ -209,30 +209,30 @@ void setEnv(const char* name, const std::string& value) {
 
 // §67: where a password is looked for when none was typed (30 October).
 void testPasswordSearch() {
-    const auto f = conninfoFields("PG:host=192.168.129.21 dbname='bdd sig' user=nfr connect_timeout=5");
-    CHECK(f.at("host") == "192.168.129.21" && f.at("dbname") == "bdd sig" && f.at("user") == "nfr");
+    const auto f = conninfoFields("PG:host=dbserver dbname='gis data' user=reader connect_timeout=5");
+    CHECK(f.at("host") == "dbserver" && f.at("dbname") == "gis data" && f.at("user") == "reader");
     CHECK(f.at("connect_timeout") == "5" && !f.count("password"));
 
     const std::string text = "# comment\r\n"
                              "db.example.org:5432:gis:gisuser:first\r\n"
-                             "192.168.129.21:5432:bdd_sig:nfr:p\\:ss\r\n"   // "\:" is a colon
-                             "*:*:*:nfr:fallback\n";
-    CHECK(pgpassMatch(text, "192.168.129.21", "5432", "bdd_sig", "nfr") == std::optional<std::string>("p:ss"));
-    CHECK(pgpassMatch(text, "other.host", "5433", "x", "nfr") == std::optional<std::string>("fallback"));   // '*'
+                             "dbserver:5432:gis_data:reader:p\\:ss\r\n"   // "\:" is a colon
+                             "*:*:*:reader:fallback\n";
+    CHECK(pgpassMatch(text, "dbserver", "5432", "gis_data", "reader") == std::optional<std::string>("p:ss"));
+    CHECK(pgpassMatch(text, "other.host", "5433", "x", "reader") == std::optional<std::string>("fallback"));   // '*'
     CHECK(!pgpassMatch(text, "other.host", "5432", "gis", "someone"));
 
     // Through the files: PGPASSFILE, the port 5432 by default.
     const auto file = (std::filesystem::temp_directory_path() / "r2d_pgpass.conf").string();
-    std::ofstream(file) << "192.168.129.21:5432:bdd_sig:nfr:fromfile\n";
+    std::ofstream(file) << "dbserver:5432:gis_data:reader:fromfile\n";
     setEnv("PGPASSWORD", "");
     setEnv("PGPASSFILE", file);
-    const std::string pg = "PG:host=192.168.129.21 dbname=bdd_sig user=nfr connect_timeout=5";
+    const std::string pg = "PG:host=dbserver dbname=gis_data user=reader connect_timeout=5";
     PasswordSearch found = findPgPassword(pg);
     CHECK(found.password == std::optional<std::string>("fromfile") && found.where == file);
     CHECK(withSessionPassword(pg) == pg + " password=fromfile");      // added for GDAL only
-    found = findPgPassword("PG:host=192.168.129.21 dbname=bdd_sig user=someone");
+    found = findPgPassword("PG:host=dbserver dbname=gis_data user=someone");
     CHECK(!found.password && found.tried.size() == 2 &&
-          found.tried[1].find("no line for 192.168.129.21:5432:bdd_sig:someone") != std::string::npos);
+          found.tried[1].find("no line for dbserver:5432:gis_data:someone") != std::string::npos);
     setEnv("PGPASSWORD", "fromenv");                                   // the variable comes first
     CHECK(findPgPassword(pg).password == std::optional<std::string>("fromenv"));
     setEnv("PGPASSWORD", "");

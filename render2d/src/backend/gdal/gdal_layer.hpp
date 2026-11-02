@@ -38,6 +38,7 @@ struct LayerInfo {
     bool                    raster = false;       // §65: a grid of pixels, no feature, no field
     bool                    hasGeometry = true;   // false: a table of attributes only (a GeoPackage's domains)
     std::string             rasterKind;           // §66: "RGB", "grey 13 to 99.56"...
+    bool                    web = false;          // §73: a web service (WMS, WMTS, tiles): a basemap
 };
 
 // "3.13.2": for --version (the rest of the program does not include GDAL).
@@ -49,6 +50,19 @@ std::string gdalVersion();
 // share/proj next to the executable; an environment variable (GDAL_DATA,
 // PROJ_DATA or PROJ_LIB) still wins.
 std::vector<std::string> gdalDataInfo();
+
+// §73: how render2d presents itself to web services (the HTTP User-Agent).
+// OpenStreetMap blocks the generic names: a program names itself, stably,
+// with where to learn about it. Called by the program before any opening
+// ("render2d/0.4.9 (+https://github.com/nfr25/render2d)"); without a call,
+// "render2d (+https://github.com/nfr25/render2d)". GDAL_HTTP_USERAGENT,
+// set by the user, wins. Nothing personal in it: the program, not the person.
+void setWebIdentity(const std::string& userAgent);
+
+// §73: the folder where the tiles of web services are kept (7 days, GDAL's
+// default): %LOCALAPPDATA%\render2d\cache\web on Windows, ~/.cache/render2d/web
+// elsewhere; GDAL_DEFAULT_WMS_CACHE_PATH, set by the user, wins.
+std::string webCacheFolder();
 
 // A zone written in WKT (§56): "POLYGON((x y, x y, ...))", read by GDAL. The
 // outer ring only; false and a message for anything else.

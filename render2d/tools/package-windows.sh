@@ -10,7 +10,8 @@
 # 2. copies render2d.exe and every DLL it needs from /ucrt64/bin
 # 3. copies GDAL's and PROJ's reference files into share/ (render2d finds
 #    them beside the executable since 0.4.4)
-# 4. copies the styles, README, LICENSE, and the licenses of the libraries
+# 4. copies the styles, the ready web basemaps (§73), README, LICENSE, and
+#    the licenses of the libraries
 # 5. checks that it starts WITHOUT MSYS2 in the PATH, and draws a test map
 # 6. zips it: dist/render2d-<version>-windows-x64.zip
 #
@@ -68,8 +69,9 @@ find "$prefix/share/proj" -maxdepth 1 -type f ! -name '*.tif' -exec cp {} "$out/
 [[ -f "$out/share/proj/proj.db" ]] || { echo "proj.db not found in $prefix/share/proj" >&2; exit 1; }
 
 # ---- 4. styles, documents, licenses -----------------------------------------------
-step "4. styles, README, licenses"
+step "4. styles, basemaps, README, licenses"
 cp -r styles "$out/"
+cp -r basemaps "$out/"   # §73: OpenStreetMap, the Region's orthophoto and basemaps
 top="$(cd "$root/.." && pwd)"
 [[ -f "$top/LICENSE" ]] && cp "$top/LICENSE" "$out/LICENSE.txt"
 
@@ -102,6 +104,7 @@ Unzip anywhere, open a command prompt in this folder, and try:
     render2d --version
     render2d --help
     render2d parcels.shp --style styles\\showcase\\parcels.yaml -o map.png
+    render2d basemaps\\urbis-ortho-2024.xml --bbox 148800 170600 149000 170800 -o grand-place.png
 
 Everything render2d needs is in this folder: the DLLs, and GDAL's and PROJ's
 reference files in share\\. Nothing to install.

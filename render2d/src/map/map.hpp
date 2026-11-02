@@ -42,6 +42,7 @@ struct LayerReport {
     std::string      name;
     LayerRenderStats stats;              // renderLayer's numbers, unchanged
     std::string      reprojection;       // §70: "EPSG:4326 -> EPSG:31370 by ...", or "" (none needed)
+    double           openMs = 0.0;       // §73: a web layer: the time its opening took (its description)
 };
 
 // What one render did. reportLines() turns it into text. §47.

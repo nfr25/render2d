@@ -35,7 +35,8 @@ the code follows them.
 | 4a | Raster layers (GeoTIFF, world files): the view's window with overviews, RGB / RGBA / palette / grey, nodata, the `raster` symbolizer and its opacity | done |
 | 4b-1 | Reprojection on the fly of vector layers (PROJ): `--crs`, `crs:` in the config, each layer converted to the map's system | done |
 | 4b-2 | Rasters in another system, warped on the fly (a warped VRT, the file's overviews, transparent corners) | done |
-| 4c | WMS / WMTS / WFS sources | |
+| 4c-1 | Web basemaps: WMS, WMTS and tiles (OpenStreetMap) through GDAL, a cache on the disk, clipped to the map system's area, ready files in `basemaps/` | done |
+| 4c-2 | Attributions on the map | |
 | — | Clipping, simplification | |
 | 5 | Full command line, JSON warnings | |
 | 6 | Raster tiles `z/x/y`, through a separate `tiles2d` tool that calls render2d per tile | |
@@ -318,6 +319,62 @@ each new view: for an image used every day, convert it once,
 `gdalwarp -t_srs EPSG:31370 -r bilinear -of COG in.tif out.tif`. A large raster
 (over 4096 pixels on a side) without overviews gets a warning with the command
 that adds them: `gdaladdo -r average file.tif 2 4 8 16 32 64`.
+
+### Web basemaps (step 4c-1)
+
+A web map service is a raster layer like a GeoTIFF: GDAL fetches the tiles
+under the view, at the right zoom level. Ready descriptions are in
+`basemaps/`:
+
+```bash
+# The Brussels Region's 2024 orthophoto (WMTS, already in Lambert 72)
+render2d basemaps/urbis-ortho-2024.xml --bbox 148800 170600 149000 170800 -o grand-place.png
+
+# The UrbIS basemap without text, in grey, under one's own data
+render2d basemaps/urbis-plain-grey.xml parcels.shp --bbox 148800 170600 149000 170800 -o plan.png
+
+# OpenStreetMap's tiles (Web Mercator), warped to the map's system
+render2d basemaps/osm.xml batiments.shp --crs EPSG:31370 -o osm.png
+```
+
+GDAL's own forms work too: `"WMTS:<GetCapabilities address>,layer=<name>"`,
+`"WMS:<server address>?...&LAYERS=<name>&SRS=EPSG:31370&BBOX=..."` (between
+double quotes: the `&` would cut the command). `gdalinfo` on the address
+lists the layers. What render2d adds:
+
+- it names itself to the servers (`render2d/<version> (+https://github.com/nfr25/render2d)`;
+  `GDAL_HTTP_USERAGENT` wins), as OpenStreetMap requires;
+- the tiles are kept 7 days on the disk, in `%LOCALAPPDATA%\render2d\cache\web`
+  (Windows) or `~/.cache/render2d/web`, whatever form the source is given in
+  (`GDAL_DEFAULT_WMS_CACHE_PATH` wins). The second view of a place reads
+  nothing from the network: 1.6 s, then 70 ms for the orthophoto above;
+- a layer covering the world is warped only over the map system's area of
+  use (Lambert 72: Belgium), and a basemap does not count in the map's
+  extent: the first view is the data's;
+- a server that does not answer within 10 s gives a warning; the other
+  layers are drawn.
+
+The report gives the zoom level read:
+
+```
+  urbis-fr             web 1000x1000 px from level 2 of 12 (0.2 m/px, averaged)   ... ms  (read ... ms, draw ... ms; opened in ... ms)
+```
+
+![The Grand-Place in Brussels: OpenStreetMap warped to Lambert 72, the cadastral parcels as red outlines](docs/img/grand-place-osm-parcels.jpg)
+
+*OpenStreetMap under the UrbIS parcels (from PostGIS, red outline), on the
+Grand-Place, 1:714. Map data © OpenStreetMap contributors (ODbL); parcels:
+UrbIS © Brussels Region (CC0).*
+
+```bash
+render2d basemaps/osm.xml "PG:host=<server> dbname=<database> user=<user>::parcels" \
+         --style styles/osm-outline.yaml --crs EPSG:31370 \
+         --bbox 148800 170600 149000 170800 -o grand-place-osm.png
+```
+
+OpenStreetMap's tiles are for the views someone looks at: never a tiles2d
+pyramid from their servers, and "© OpenStreetMap contributors" on the map.
+The Region's services are CC0 (public domain).
 
 ### Styles
 

@@ -1,0 +1,12 @@
+<GDAL_WMTS>
+  <!-- The Brussels Region's 2024 orthophoto (north-south flight), served in
+       Lambert 72 (EPSG:31370): nothing to warp on a Lambert map. Licence CC0
+       (public domain); "UrbIS (c) Brussels Region" as a courtesy.
+       Other years: Ortho2023, Ortho2022NS, Ortho2021NS, Ortho2012, Ortho2004;
+       the east-west flights end in EO; near infrared: Ortho2024NIRNS.
+       The list: gdalinfo "WMTS:<the GetCapabilities address below>". -->
+  <GetCapabilitiesUrl>https://geoservices-grid.irisnet.be/geowebcache/service/wmts?service=wmts&amp;request=GetCapabilities&amp;version=1.0.0</GetCapabilitiesUrl>
+  <Layer>Ortho2024NS</Layer>
+  <TileMatrixSet>EPSG:31370</TileMatrixSet>
+  <Cache />
+</GDAL_WMTS>

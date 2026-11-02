@@ -2560,10 +2560,10 @@ warning: UrbDSM_2021_147171: no CRS declared, assumed to be the map CRS
 
   <h3>La source, dans render2d et editor2d</h3>
 <pre>
-PG:host=192.168.1.20 dbname=gis user=nfr connect_timeout=5::municipalities
-PG:host=192.168.1.20 dbname=gis user=nfr::urbis.buildings      (un autre schéma)
+PG:host=dbserver dbname=gis user=reader connect_timeout=5::municipalities
+PG:host=dbserver dbname=gis user=reader::urbis.buildings      (un autre schéma)
 </pre>
-  <p>Le mot de passe : dans <code>%APPDATA%\postgresql\pgpass.conf</code>, jamais dans la chaîne ni dans le yaml. Une ligne : <code>192.168.1.20:5432:gis:nfr:secret</code>.</p>
+  <p>Le mot de passe : dans <code>%APPDATA%\postgresql\pgpass.conf</code>, jamais dans la chaîne ni dans le yaml. Une ligne : <code>dbserver:5432:gis:reader:secret</code>.</p>
   <p>Les tables d'une base : <code>listLayers("PG:…")</code> (render2d 0.4.1) rend chaque couche avec son nom (<code>schema.table</code> hors de <code>public</code>), son type, son nombre d'entités et son système, sans l'emprise (coûteuse sur une grosse table). C'est elle que le dialogue « Connect to database » d'editor2d appelle (ses notions §65), dans un fil à part. Depuis 0.4.3, elle dit aussi si une couche a une géométrie (un GeoPackage range des listes de valeurs en tables sans géométrie) et ne donne le nombre d'entités que si GDAL le connaît sans compter (-1 sinon).</p>
   <p>Le mot de passe tapé dans ce dialogue : <code>setSessionPassword(connexion, mot_de_passe)</code> (render2d 0.4.2) le garde en mémoire, attaché à la connexion ; chaque ouverture par GDAL de cette connexion reçoit <code>password=…</code> en plus, et rien d'autre ne le voit (la source, le yaml, les messages). La variable <code>PGPASSWORD</code>, essayée d'abord, n'était pas vue par <code>libpq.dll</code> sous Windows.</p>
 
@@ -2648,7 +2648,7 @@ WHERE SDO_FILTER(b.geom,                        WHERE geom &amp;&amp; ST_MakeEnv
   <p><code>ogr2ogr</code> est le couteau suisse de GDAL : une source vers une autre, avec un filtre, une reprojection, un tri. La forme : <code>ogr2ogr -f FORMAT_ARRIVÉE ARRIVÉE DÉPART [couche]</code>.</p>
 <pre>
 # un shapefile vers PostGIS (la recette du 27 octobre)
-ogr2ogr -f PostgreSQL "PG:host=IP dbname=gis user=nfr" \
+ogr2ogr -f PostgreSQL "PG:host=IP dbname=gis user=reader" \
   UrbISBuildings_04000_Buildings.shp \
   -nln buildings -nlt PROMOTE_TO_MULTI -lco GEOMETRY_NAME=geom -progress
 

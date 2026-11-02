@@ -66,13 +66,27 @@ LayerRenderStats renderRaster(GdalRaster& raster, Canvas& cv, const View& v, con
 
     std::string error;
     const RasterRead rr = raster.read(v, error);
-    if (!error.empty()) warnings.push_back(error);
+    if (!error.empty() && raster.info().web) {
+        // §73: GDAL's paragraph, said in one line. The cause is the last
+        // "error: ..." of the message when there is one, else its first line.
+        std::string cause = error;
+        if (const auto at = cause.rfind("error: "); at != std::string::npos) cause = cause.substr(at + 7);
+        cause = cause.substr(0, cause.find_first_of(".\n"));
+        warnings.push_back(raster.info().name + ": the web service could not be read (" + cause +
+                           "): not drawn, except the tiles already in the cache. Offline, or the server down?");
+    } else if (!error.empty()) {
+        warnings.push_back(error);
+    }
     st.readMs       = rr.ms;
     st.pixelsWidth  = rr.block.width;
     st.pixelsHeight = rr.block.height;
     st.fileWidth    = rr.fileWidth;
     st.fileHeight   = rr.fileHeight;
     st.reduced      = rr.reduced;
+    st.web          = raster.info().web;   // §73
+    st.level        = rr.level;
+    st.levels       = rr.levels;
+    st.levelPixel   = rr.levelPixel;
     if (rr.block.argb.empty()) return st;
 
     const auto t0 = Clock::now();
@@ -298,11 +312,17 @@ void Map::moveLayer(int from, int to) {
     layers_.insert(layers_.begin() + to, std::move(layer));
 }
 
+// §73: the data's extent. A web layer (OpenStreetMap: the world; the UrbIS
+// WMS: Belgium) counts only when there is nothing else.
 std::optional<Envelope> Map::extent() const {
-    std::optional<Envelope> area;
-    for (int i = 0; i < layerCount(); ++i)
-        if (const auto e = layerExtent(i)) area = area ? area->merged(*e) : *e;
-    return area;
+    std::optional<Envelope> area, web;
+    for (int i = 0; i < layerCount(); ++i) {
+        const auto e = layerExtent(i);
+        if (!e) continue;
+        std::optional<Envelope>& into = layerInfo(i).web ? web : area;
+        into = into ? into->merged(*e) : *e;
+    }
+    return area ? area : web;
 }
 
 std::optional<Envelope> Map::layerExtent(int i) const {
@@ -360,7 +380,8 @@ MapReport Map::render(Canvas& cv, const View& view, const std::function<bool()>&
             const LayerRenderStats st = renderRaster(*layer->raster, cv, v,
                                                      layer->scaledStyle ? &*layer->scaledStyle : nullptr,
                                                      report.warnings);
-            report.layers.push_back({li.name, st, layer->toMap ? layer->toMap->description() : std::string()});   // §72
+            report.layers.push_back({li.name, st, layer->toMap ? layer->toMap->description() : std::string(),
+                                     li.web ? layer->raster->openMs() : 0.0});   // §72, §73
             if (st.passes == 0) warn(li.name + ": no rule of the style applies at scale 1:" +
                                      std::to_string(static_cast<long>(std::lround(v.scaleDenominator()))));
             continue;
@@ -516,6 +537,14 @@ std::vector<std::string> reportLines(const MapReport& r) {
     for (const LayerReport& lr : r.layers) {
         const LayerRenderStats& st = lr.stats;
         if (st.raster) {   // §66: pixels, not features
+            if (st.web) {   // §73: a service: its zoom level, not its invented "file pixels"
+                lines.push_back(format("  %-20s web %dx%d px from level %d of %d (%.3g m/px, %s) %9.1f ms  (read %.1f ms, draw %.1f ms; opened in %.1f ms)",
+                                       lr.name.c_str(), st.pixelsWidth, st.pixelsHeight, st.level, st.levels,
+                                       st.levelPixel, st.reduced ? "averaged" : "nearest", st.readMs + st.drawMs,
+                                       st.readMs, st.drawMs, lr.openMs));
+                if (!lr.reprojection.empty()) lines.push_back("      reprojected " + lr.reprojection);
+                continue;
+            }
             // §72: warped, the pixels read are the warped image's, not the file's.
             lines.push_back(format("  %-20s raster %dx%d px from %.0fx%.0f %s px (%s) %9.1f ms  (read %.1f ms, draw %.1f ms)",
                                    lr.name.c_str(), st.pixelsWidth, st.pixelsHeight, st.fileWidth, st.fileHeight,

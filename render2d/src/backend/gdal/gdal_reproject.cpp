@@ -239,6 +239,23 @@ std::optional<Envelope> extentInCrs(const CrsInfo& layerCrs, const std::optional
     return t ? t->forwardBounds(*extent) : std::nullopt;
 }
 
+std::optional<Envelope> areaOfUse(const CrsInfo& crs) {
+    gdalInit();
+    OGRSpatialReference target;
+    if (!crs.known || !fromWkt(crs, target)) return std::nullopt;
+    target.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+    double west = 0, south = 0, east = 0, north = 0;
+    const char* name = nullptr;
+    if (!target.GetAreaOfUse(&west, &south, &east, &north, &name) || west > east) return std::nullopt;   // across 180°: not handled
+    OGRSpatialReference degrees;
+    degrees.SetWellKnownGeogCS("WGS84");
+    degrees.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+    std::unique_ptr<OGRCoordinateTransformation> t(OGRCreateCoordinateTransformation(&degrees, &target));
+    Envelope e;
+    if (!t || !t->TransformBounds(west, south, east, north, &e.xmin, &e.ymin, &e.xmax, &e.ymax, 21)) return std::nullopt;
+    return e;
+}
+
 bool sameCrs(const CrsInfo& a, const CrsInfo& b) {
     if (!a.known || !b.known) return true;
     if (a.epsg != 0 && a.epsg == b.epsg) return true;

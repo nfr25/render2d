@@ -43,6 +43,12 @@ bool crsBelievable(const CrsInfo& crs, const std::optional<Envelope>& extent);
 std::optional<Envelope> extentInCrs(const CrsInfo& layerCrs, const std::optional<Envelope>& extent,
                                     const CrsInfo& mapCrs);
 
+// §73: where a system is meant to be used (PROJ knows it for each one: for
+// Lambert 72, Belgium, 2.5° to 6.4° E, 49.5° to 51.51° N), in that system's
+// own coordinates. Empty when unknown. A web basemap is warped only there,
+// and that is where a map of basemaps alone opens.
+std::optional<Envelope> areaOfUse(const CrsInfo& crs);
+
 // Nothing to convert: the same EPSG code, or the same definition. A CRS not
 // declared counts as the same (assumed to be the map's, with a warning).
 bool sameCrs(const CrsInfo& a, const CrsInfo& b);

@@ -44,6 +44,11 @@ struct LayerRenderStats {
     int    pixelsWidth = 0, pixelsHeight = 0;   // the image pixels drawn
     double fileWidth = 0.0, fileHeight = 0.0;   // the file pixels they cover
     bool   reduced = false;                     // averaged (else the nearest file pixel)
+    // §73: a web service: the zoom level read (0 = the finest) among
+    // `levels`, and its pixel size. Its "file pixels" mean nothing.
+    bool   web = false;
+    int    level = 0, levels = 0;
+    double levelPixel = 0.0;
 };
 
 // The style to use for each geometry type, indexed by GeomType (Point, Line,

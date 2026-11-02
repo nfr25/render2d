@@ -1,0 +1,31 @@
+<GDAL_WMS>
+  <!-- The UrbIS basemap without any text, in grey: a quiet background under one's own data (its labels do not fight with ours).
+       Drawn by the Region's GeoServer in Lambert 72 (EPSG:31370), in PNG
+       (sharper than JPEG for a plan with text). Licence CC0 (public domain);
+       "UrbIS (c) Brussels Region" as a courtesy. Finest level: 5 cm per pixel,
+       12 levels above it (up to 205 m per pixel). Other layers: UrbISFrench-,
+       UrbISDutch-, UrbISFrenchDutchLabeled-, UrbISNotLabeled- with Color or Gray.
+       The list: gdalinfo "WMS:https://geoservices-urbis.irisnet.be/geoserver/BaseMaps/ows?" -->
+  <Service name="WMS">
+    <Version>1.1.1</Version>
+    <ServerUrl>https://geoservices-urbis.irisnet.be/geoserver/BaseMaps/wms?SERVICE=WMS</ServerUrl>
+    <Layers>UrbISNotLabeledGray</Layers>
+    <SRS>EPSG:31370</SRS>
+    <ImageFormat>image/png</ImageFormat>
+    <Transparent>FALSE</Transparent>
+    <BBoxOrder>xyXY</BBoxOrder>
+  </Service>
+  <DataWindow>
+    <UpperLeftX>21991.63253589799</UpperLeftX>
+    <UpperLeftY>244027.2116964629</UpperLeftY>
+    <LowerRightX>295167.070044775</LowerRightX>
+    <LowerRightY>21162.16053197249</LowerRightY>
+    <SizeX>5463509</SizeX>
+    <SizeY>4457301</SizeY>
+  </DataWindow>
+  <BandsCount>3</BandsCount>
+  <BlockSizeX>512</BlockSizeX>
+  <BlockSizeY>512</BlockSizeY>
+  <OverviewCount>12</OverviewCount>
+  <Cache />
+</GDAL_WMS>

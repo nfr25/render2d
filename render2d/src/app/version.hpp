@@ -6,7 +6,7 @@
 
 namespace r2d {
 
-inline constexpr const char* kVersion = "0.4.8";
-inline constexpr const char* kVersionStep = "step 4b-2 (0.4.8: rasters in another system, warped on the fly)";
+inline constexpr const char* kVersion = "0.4.9";
+inline constexpr const char* kVersionStep = "step 4c-1 (0.4.9: web basemaps, WMS, WMTS and tiles, with a cache)";
 
 } // namespace r2d

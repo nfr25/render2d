@@ -4,15 +4,21 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cctype>
 #include <cstdio>
+#include <fstream>
+#include <optional>
+#include <sstream>
 #include <vector>
 
 #include <cpl_conv.h>
 #include <cpl_error.h>
 #include <gdal_priv.h>
 #include <gdal_utils.h>
+#include <ogr_spatialref.h>
 
 #include "backend/gdal/gdal_convert.hpp"
+#include "backend/gdal/gdal_reproject.hpp"
 
 namespace r2d {
 
@@ -53,7 +59,127 @@ std::string shortNumber(double x) {
     return s;
 }
 
+bool startsWithNoCase(const std::string& s, const char* prefix) {
+    for (std::size_t i = 0; prefix[i]; ++i)
+        if (i >= s.size() || std::tolower(static_cast<unsigned char>(s[i])) != std::tolower(static_cast<unsigned char>(prefix[i])))
+            return false;
+    return true;
+}
+
+// §73: what to give GDAL for a web service, and what to call it.
+struct WebSource {
+    std::string open;          // the address, or the XML description itself
+    bool        web = false;
+    std::string name;          // empty: the usual name (the file's)
+};
+
+// GDAL's XML description of the service a "WMS:" address opens: what
+// `gdal_translate -of WMS` writes, here in memory (/vsimem/).
+std::string wmsDescription(const std::string& address) {
+    GDALDatasetUniquePtr ds(GDALDataset::Open(address.c_str(), GDAL_OF_RASTER));
+    GDALDriver* wms = GetGDALDriverManager()->GetDriverByName("WMS");
+    if (!ds || !wms) return {};
+    static int counter = 0;
+    const std::string mem = "/vsimem/r2d_wms_" + std::to_string(++counter) + ".xml";
+    GDALDatasetUniquePtr copy(wms->CreateCopy(mem.c_str(), ds.get(), FALSE, nullptr, nullptr, nullptr));
+    copy.reset();
+    std::string xml;
+    vsi_l_offset size = 0;
+    if (GByte* bytes = VSIGetMemFileBuffer(mem.c_str(), &size, FALSE))
+        xml.assign(reinterpret_cast<const char*>(bytes), static_cast<std::size_t>(size));
+    VSIUnlink(mem.c_str());
+    return xml;
+}
+
+WebSource webSource(const std::string& path) {
+    WebSource w;
+    w.open = path;
+    w.name = webLayerName(path);
+    if (startsWithNoCase(path, "WMTS:")) {   // the WMTS driver keeps a cache by itself (seen 2 November)
+        w.web = true;
+        return w;
+    }
+    if (startsWithNoCase(path, "WMS:")) {    // opened from an address: no <Cache />, so a description with one
+        w.web = true;
+        const std::string xml = wmsDescription(path);
+        if (!xml.empty()) w.open = withWebCache(xml);
+        return w;
+    }
+    std::string text;
+    if (startsWithNoCase(path, "<GDAL_WMS") || startsWithNoCase(path, "<GDAL_WMTS")) {
+        text = path;
+    } else if (path.size() > 4 && startsWithNoCase(path.substr(path.size() - 4), ".xml")) {
+        std::ifstream in(path, std::ios::binary);
+        std::ostringstream all;
+        if (in) all << in.rdbuf();
+        text = all.str();
+        if (text.size() > (1u << 20)) text.clear();   // a description is small
+    }
+    if (text.find("<GDAL_WMS") != std::string::npos || text.find("<GDAL_WMTS") != std::string::npos) {
+        w.web  = true;
+        w.open = withWebCache(text);
+    }
+    return w;
+}
+
+// §73: where a web layer may be warped to `to`: its area of use (PROJ knows
+// it for each system, in degrees), and the layer's own extent when smaller.
+// Empty: no limit known.
+std::optional<Envelope> webClip(const CrsInfo& from, const OGRSpatialReference* fileSrs, const CrsInfo& to,
+                                const Envelope& extent) {
+    const auto aoi = areaOfUse(to);
+    if (!aoi) return std::nullopt;
+    const Envelope& area = *aoi;
+    OGRSpatialReference target;
+    if (target.importFromWkt(to.wkt.c_str()) != OGRERR_NONE) return area;
+    target.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+
+    // The layer's own extent, when it converts sensibly (the UrbIS WMS:
+    // Belgium; OpenStreetMap: the world, which does not).
+    OGRSpatialReference source;
+    bool haveSource = false;
+    if (!from.wkt.empty()) haveSource = source.importFromWkt(from.wkt.c_str()) == OGRERR_NONE;
+    else if (fileSrs) { source = *fileSrs; haveSource = true; }
+    if (haveSource) {
+        source.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+        CPLErrorReset();
+        std::unique_ptr<OGRCoordinateTransformation> own(OGRCreateCoordinateTransformation(&source, &target));
+        Envelope e;
+        if (own && own->TransformBounds(extent.xmin, extent.ymin, extent.xmax, extent.ymax,
+                                        &e.xmin, &e.ymin, &e.xmax, &e.ymax, 21) &&
+            std::isfinite(e.xmin) && std::isfinite(e.xmax) && std::isfinite(e.ymin) && std::isfinite(e.ymax)) {
+            const Envelope both{std::max(e.xmin, area.xmin), std::max(e.ymin, area.ymin),
+                                std::min(e.xmax, area.xmax), std::min(e.ymax, area.ymax)};
+            if (both.xmax > both.xmin && both.ymax > both.ymin) return both;
+        }
+    }
+    return area;
+}
+
 } // namespace
+
+std::string withWebCache(const std::string& xml) {
+    if (xml.find("<Cache") != std::string::npos) return xml;
+    for (const char* end : {"</GDAL_WMS>", "</GDAL_WMTS>"}) {
+        const std::size_t at = xml.rfind(end);
+        if (at != std::string::npos) return xml.substr(0, at) + "  <Cache />\n" + xml.substr(at);
+    }
+    return xml;
+}
+
+std::string webLayerName(const std::string& source) {
+    const char* key = startsWithNoCase(source, "WMTS:") ? "layer=" : startsWithNoCase(source, "WMS:") ? "layers=" : nullptr;
+    if (!key) return {};
+    std::string lower(source);
+    for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    std::size_t at = lower.find(key);
+    while (at != std::string::npos && at > 0 && lower[at - 1] != ',' && lower[at - 1] != '&' && lower[at - 1] != '?')
+        at = lower.find(key, at + 1);   // "tilematrixlayer=": not ours
+    if (at == std::string::npos) return {};
+    at += std::char_traits<char>::length(key);
+    const std::size_t end = source.find_first_of(",&", at);
+    return source.substr(at, end == std::string::npos ? std::string::npos : end - at);
+}
 
 struct GdalRaster::Impl {
     GDALDatasetUniquePtr dataset;                      // the file
@@ -62,6 +188,7 @@ struct GdalRaster::Impl {
     int                  fileWidth = 0, fileHeight = 0;
     Kind                 kind = Kind::Grey;
     bool                 overviews = false;
+    double               openMs = 0.0;                 // §73
     // The grid read() works on: the file's, or the warped VRT's (§72).
     double               gt[6] = {0, 1, 0, 0, 0, 1};   // the geotransform (§65)
     int                  width = 0, height = 0;
@@ -95,7 +222,10 @@ std::unique_ptr<GdalRaster> GdalRaster::open(const std::string& path, std::strin
 
     std::unique_ptr<GdalRaster> r(new GdalRaster());
     Impl& im = *r->impl_;
-    im.dataset.reset(GDALDataset::Open(withSessionPassword(path).c_str(), GDAL_OF_RASTER));
+    const auto t0 = std::chrono::steady_clock::now();
+    const WebSource web = webSource(path);   // §73
+    im.dataset.reset(GDALDataset::Open(web.web ? web.open.c_str() : withSessionPassword(path).c_str(), GDAL_OF_RASTER));
+    im.openMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
     if (!im.dataset || im.dataset->GetRasterCount() == 0) {
         error = "cannot open '" + path + "' as a raster";
         if (CPLGetLastErrorMsg()[0] != '\0') error += std::string(": ") + CPLGetLastErrorMsg();
@@ -156,7 +286,9 @@ std::unique_ptr<GdalRaster> GdalRaster::open(const std::string& path, std::strin
     // 5. The layer's description, as for a vector layer.
     LayerInfo& info = im.info;
     info.source = path;
-    info.name   = CPLGetBasename(path.c_str());
+    info.name   = web.name.empty() ? std::string(CPLGetBasename(path.c_str())) : web.name;
+    const char* driver = ds.GetDriver() ? ds.GetDriver()->GetDescription() : "";
+    info.web    = web.web || EQUAL(driver, "WMS") || EQUAL(driver, "WMTS");
     info.raster = true;
     info.crs    = crsInfo(ds.GetSpatialRef());
     info.extent = im.extent;
@@ -176,6 +308,7 @@ int  GdalRaster::height() const { return impl_->fileHeight; }
 bool GdalRaster::hasOverviews() const { return impl_->overviews; }
 const Envelope& GdalRaster::extent() const { return impl_->extent; }
 bool GdalRaster::warped() const { return impl_->warpedDs != nullptr; }
+double GdalRaster::openMs() const { return impl_->openMs; }
 
 void GdalRaster::unwarp() {
     Impl& im = *impl_;
@@ -201,6 +334,16 @@ bool GdalRaster::warpTo(const CrsInfo& from, const CrsInfo& to, std::string& err
     if (!from.wkt.empty()) {   // a declared system wins over the file's own (§70)
         args.AddString("-s_srs");
         args.AddString(from.wkt.c_str());
+    }
+    if (im.info.web) {   // §73: only where the map's system means something
+        if (const auto clip = webClip(from, im.dataset->GetSpatialRef(), to, *im.info.extent)) {
+            args.AddString("-te");
+            for (double v : {clip->xmin, clip->ymin, clip->xmax, clip->ymax}) {
+                char number[40];
+                std::snprintf(number, sizeof number, "%.17g", v);
+                args.AddString(number);
+            }
+        }
     }
     GDALWarpAppOptions* options = GDALWarpAppOptionsNew(args.List(), nullptr);
     GDALDatasetH source = GDALDataset::ToHandle(im.dataset.get());
@@ -291,6 +434,24 @@ RasterRead GdalRaster::read(const View& view, std::string& error) {
         for (int i = 0; i < n; ++i) colIdx[i] = flipX ? n - 1 - i : i;
         for (int j = 0; j < m; ++j) rowIdx[j] = flipY ? m - 1 - j : j;
         out.reduced = true;
+    }
+    // §73: which level GDAL reads: the coarsest overview at least as fine
+    // as the view (GDAL's rule, without its small tolerance). For a web
+    // service, the only meaningful figure.
+    {
+        GDALRasterBand* band = im.channels[0].band;
+        out.levels = band->GetOverviewCount();
+        double factor = 1.0;
+        if (out.reduced) {
+            const double wanted = std::min(kx, ky);
+            for (int k = 0; k < out.levels; ++k) {
+                GDALRasterBand* o = band->GetOverview(k);
+                if (!o || o->GetXSize() <= 0) continue;
+                const double f = static_cast<double>(im.width) / o->GetXSize();
+                if (f <= wanted && f > factor) { factor = f; out.level = k + 1; }
+            }
+        }
+        out.levelPixel = std::abs(g[1]) * factor;
     }
     out.fileWidth  = arg.bFloatingPointWindowValidity ? arg.dfXSize : xSize;
     out.fileHeight = arg.bFloatingPointWindowValidity ? arg.dfYSize : ySize;
