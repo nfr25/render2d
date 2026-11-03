@@ -194,6 +194,25 @@ std::optional<Point> toLonLat(const CrsInfo& crs, Point p) {
     return g.points[0];
 }
 
+std::optional<double> northAngle(const CrsInfo& crs, Point p) {
+    std::string error;
+    const std::optional<CrsInfo> wgs84 = crsFromText("EPSG:4326", error);
+    if (!wgs84 || !crs.known) return std::nullopt;
+    if (sameCrs(crs, *wgs84)) return 0.0;
+    const auto ll = toLonLat(crs, p);
+    const auto back = CrsTransform::create(*wgs84, crs, std::nullopt, error);
+    if (!ll || !back) return std::nullopt;
+    // A step of 0.001° (about 111 m) towards the north, converted back.
+    Geometry g;
+    g.type = GeomType::Point;
+    g.points.push_back({ll->x, ll->y + 0.001});
+    g.closePart(0);
+    if (!back->forward(g)) return std::nullopt;
+    const double dx = g.points[0].x - p.x, dy = g.points[0].y - p.y;
+    if (!(std::hypot(dx, dy) > 0.0)) return std::nullopt;
+    return std::atan2(dx, dy) * 180.0 / 3.14159265358979323846;
+}
+
 std::optional<CrsInfo> crsFromText(const std::string& text, std::string& error) {
     gdalInit();
     OGRSpatialReference srs;

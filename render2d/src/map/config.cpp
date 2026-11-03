@@ -56,7 +56,7 @@ void unknownKeys(const YAML::Node& node, const std::set<std::string>& known, con
 }
 
 // The keys we read and write; any other key of an existing file is kept.
-const std::set<std::string> kOurKeys = {"crs", "layers", "start"};
+const std::set<std::string> kOurKeys = {"crs", "layers", "start", "print"};
 
 // One path component against another: on Windows "Cartes" is "cartes".
 bool samePart(const std::string& a, const std::string& b) {
@@ -125,11 +125,21 @@ std::string configText(const Config& config, const std::string& path) {
         if (!l.title.empty()) o << "    title: " << quoted(l.title) << "\n";
         if (!l.crs.empty()) o << "    crs: " << quoted(l.crs) << "\n";   // §70
         if (!l.attribution.empty()) o << "    attribution: " << quoted(l.attribution) << "\n";   // §73
+        if (!l.legend) o << "    legend: false\n";   // §74
     }
     if (config.startBbox) {
         const Envelope& b = *config.startBbox;
         o << "start:\n  bbox: [" << number(b.xmin) << ", " << number(b.ymin) << ", " << number(b.xmax) << ", "
           << number(b.ymax) << "]\n";
+    }
+    if (config.print) {   // §74
+        const PageSpec& p = *config.print;
+        o << "print:\n  page: " << pageFormatText(p) << "\n";
+        if (p.scale) o << "  scale: " << number(*p.scale) << "\n";
+        if (p.center) o << "  center: [" << number(p.center->x) << ", " << number(p.center->y) << "]\n";
+        if (!p.title.empty()) o << "  title: " << quoted(p.title) << "\n";
+        if (!p.subtitle.empty()) o << "  subtitle: " << quoted(p.subtitle) << "\n";
+        if (!p.legend) o << "  legend: false\n";
     }
     // The other keys of the file already there (viewer2d's), in their order.
     try {
@@ -176,7 +186,8 @@ ConfigResult loadConfig(const std::string& path) {
         return result;
     }
     // viewer2d's own keys are not ours, but they are not mistakes either.
-    unknownKeys(root, {"crs", "layers", "start", "render2d", "max_parallel", "tiles", "metatile"}, path + ": ", result.warnings);
+    unknownKeys(root, {"crs", "layers", "start", "print", "render2d", "max_parallel", "tiles", "metatile"}, path + ": ",
+                result.warnings);
 
     const fs::path folder = fs::absolute(fs::path(path)).parent_path();
 
@@ -204,7 +215,8 @@ ConfigResult loadConfig(const std::string& path) {
                 result.error = where + "expected 'source' (and optionally 'style')";
                 return result;
             }
-            unknownKeys(item, {"source", "style", "visible", "title", "crs", "attribution"}, where, result.warnings);
+            unknownKeys(item, {"source", "style", "visible", "title", "crs", "attribution", "legend"}, where,
+                        result.warnings);
             LayerSpec spec;
             try {
                 spec.source = resolve(item["source"].as<std::string>(), folder);
@@ -214,8 +226,9 @@ ConfigResult loadConfig(const std::string& path) {
                 if (item["title"]) spec.title = item["title"].as<std::string>();
                 if (item["crs"]) spec.crs = item["crs"].as<std::string>();   // §70: checked by the Map
                 if (item["attribution"]) spec.attribution = item["attribution"].as<std::string>();   // §73
+                if (item["legend"]) spec.legend = item["legend"].as<bool>();   // §74
             } catch (const YAML::Exception&) {
-                result.error = where + "'visible' must be true or false";
+                result.error = where + "'visible' and 'legend' must be true or false";
                 return result;
             }
             result.config.layers.push_back(spec);
@@ -244,6 +257,36 @@ ConfigResult loadConfig(const std::string& path) {
             result.error = path + ": start bbox: four numbers expected";
             return result;
         }
+    }
+
+    // print: the page (§74). A mistake stops here: a page is asked for on purpose.
+    if (const YAML::Node print = root["print"]) {
+        if (!print.IsMap()) {
+            result.error = path + ": print: expected 'page', 'scale', 'center', 'title', 'subtitle'";
+            return result;
+        }
+        unknownKeys(print, {"page", "scale", "center", "title", "subtitle", "legend"}, path + ": print: ",
+                    result.warnings);
+        PageSpec page;
+        try {
+            std::string why;
+            if (print["page"] && !parsePageFormat(print["page"].as<std::string>(), page, why)) {
+                result.error = path + ": print: " + why;
+                return result;
+            }
+            if (print["scale"]) page.scale = print["scale"].as<double>();
+            if (const YAML::Node c = print["center"]) {
+                if (!c.IsSequence() || c.size() != 2) throw YAML::Exception(YAML::Mark(), "center");
+                page.center = Point{c[0].as<double>(), c[1].as<double>()};
+            }
+            if (print["title"]) page.title = print["title"].as<std::string>();
+            if (print["subtitle"]) page.subtitle = print["subtitle"].as<std::string>();
+            if (print["legend"]) page.legend = print["legend"].as<bool>();
+        } catch (const YAML::Exception&) {
+            result.error = path + ": print: scale is a number (1000 for 1:1 000), center is [x, y]";
+            return result;
+        }
+        result.config.print = page;
     }
 
     result.ok = true;

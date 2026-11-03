@@ -71,6 +71,12 @@ public:
     virtual void save() = 0;
     virtual void restore() = 0;
 
+    // --- placement: notions §74 (a map in its frame on a page) ------------
+    // Until restore(): what is drawn next is kept inside the rectangle
+    // (x, y, w, h), and shifted by (dx, dy). Both in the current coordinates.
+    virtual void clipRect(double x, double y, double w, double h) = 0;
+    virtual void translate(double dx, double dy) = 0;
+
     // Convenience: fill, then stroke the same path, then forget it.
     void fillAndStroke(const FillStyle& f, const StrokeStyle& s) {
         fill(f, PathMode::Keep);

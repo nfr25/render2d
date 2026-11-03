@@ -38,6 +38,7 @@ struct LayerSpec {
                                                  // that says none or a wrong one; "" = the file's
     std::string                attribution;      // §73: "© ..." written on the map; "" = the source's own
                                                  // (OpenStreetMap's for its tiles), else none
+    bool                       legend = true;    // §74: false = left out of a page's legend (a helper layer)
 };
 
 struct LayerReport {
@@ -45,6 +46,7 @@ struct LayerReport {
     LayerRenderStats stats;              // renderLayer's numbers, unchanged
     std::string      reprojection;       // §70: "EPSG:4326 -> EPSG:31370 by ...", or "" (none needed)
     double           openMs = 0.0;       // §73: a web layer: the time its opening took (its description)
+    int              layer = -1;         // §74: its index in the map (two layers may share a name)
 };
 
 // What one render did. reportLines() turns it into text. §47.
@@ -127,6 +129,11 @@ public:
     const std::string& layerReprojection(int i) const;  // §70: "EPSG:4326 -> ... by ...", or ""
     const CrsInfo&     layerCrs(int i) const;           // §70: the declared one (LayerSpec::crs), else the file's
     const std::string& layerAttribution(int i) const;   // §73: the map file's, else the source's ("" = none)
+    // §74 (5b): what a page's legend reads. The style as read (not scaled),
+    // or the default one for `type`; the title of the map file, else the name.
+    Style              layerStyle(int i, GeomType type) const;
+    const std::string& layerTitle(int i) const;
+    bool               layerInLegend(int i) const;   // visible, usable, not a web basemap, legend: not false
     const std::vector<FieldDef>& layerFields(int i) const;   // the columns of the query's attributes
     bool             visible(int i) const;
     void             setVisible(int i, bool on);

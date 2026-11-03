@@ -10,6 +10,7 @@
 
 #include "core/envelope.hpp"
 #include "map/map.hpp"
+#include "map/page.hpp"
 
 namespace r2d {
 
@@ -18,6 +19,7 @@ struct Config {
     std::vector<LayerSpec>  layers;      // drawn in this order, first at the bottom
     std::optional<Envelope> startBbox;   // start: bbox, if given (in the map's CRS)
     std::string             crs;         // §70: "EPSG:3857" as written; "" = the first layer's
+    std::optional<PageSpec> print;       // §74: the printed page (page, scale, center, title, subtitle)
 };
 
 struct ConfigResult {

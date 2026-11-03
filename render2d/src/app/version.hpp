@@ -6,7 +6,7 @@
 
 namespace r2d {
 
-inline constexpr const char* kVersion = "0.4.10";
-inline constexpr const char* kVersionStep = "step 4c-2 (0.4.10: attributions on the map, --no-attribution for tiles)";
+inline constexpr const char* kVersion = "0.5.2";
+inline constexpr const char* kVersionStep = "step 5c (0.5.2: pageFrame, mapPerGroundAt, niceScale, for editor2d's Print)";
 
 } // namespace r2d

@@ -176,8 +176,9 @@ th{background:var(--code)}
   <a href="#osm">71. Testing with OpenStreetMap</a>
   <a href="#warp">72. Rasters in another system, warped on the fly</a>
   <a href="#web">73. Web basemaps: the design</a>
-  <a href="#refs">74. References</a>
-  <a href="#road">75. Roadmap</a>
+  <a href="#print">74. Printing: a page at an exact scale</a>
+  <a href="#refs">75. References</a>
+  <a href="#road">76. Roadmap</a>
 </nav>
 
 <!-- ============================================================== -->
@@ -3238,8 +3239,161 @@ bash:  find /c/temp/wmscache -type f | wc -l</pre>
 </section>
 
 <!-- ============================================================== -->
+<section id="print">
+  <h2>74. Printing: a page at an exact scale <span class="tag">step 5, design</span></h2>
+  <p>Decided on 2 November: before the labels, a printed page, because "I make my map and I print it" is what a 1.0 is expected to do first. PDF is enough: vector, every line and letter sharp at any size, readable everywhere, and what a print shop asks for. The page is composed by <strong>render2d</strong>, as everything else: the command line, editor2d and later viewer2d give the same sheet; editor2d adds a dialog and a preview. And the day someone wants fifty sheets, one per municipality, it is a loop on the command line, as for the catalogue's thumbnails.</p>
+
+  <h3>What render2d already does: PDF, in points</h3>
+  <p><code>-o map.pdf</code> already writes a vector PDF through Cairo (step 1, §10). Its unit is the typographer's <strong>point</strong>: 1/72 of an inch, 25.4 ÷ 72 = <strong>0.3528 mm</strong>. An A4 sheet is 297 × 210 mm, so 841.9 × 595.3 points. What is missing is the <em>page</em>: a sheet of a given format, the map in a frame at a chosen scale, and around it what makes a map readable on paper.</p>
+
+  <h3>The trap: a point is not a pixel</h3>
+  <p>render2d's scale and its styles count in "pixels" of <strong>0.28 mm</strong>, OGC's standard pixel (§39): a line of 1 px in a style is meant to be 0.28 mm wide, and the scale is computed with that pixel. In a PDF, one unit is 0.3528 mm. Drawn as it is, a PDF would be wrong twice: the scale written on it would not be the scale measured with a ruler, and the lines would be 26 % too thick.</p>
+  <div class="calc"><strong>The correction, worked out on an A4 at 1:1 000</strong><ol>
+    <li>The map frame: 277 mm wide on the paper (the sheet's 297 mm less 10 mm of margin each side). At 1:1 000, 1 mm of paper is 1 m of ground: the frame shows <strong>277 m</strong>.</li>
+    <li>In points: 277 ÷ 0.3528 = <strong>785.2 points</strong>. So one point of the PDF is 277 m ÷ 785.2 = <strong>0.3528 m</strong> of ground: the view's resolution.</li>
+    <li>render2d's scale (§39): resolution × pixel ratio ÷ 0.00028. With a ratio of 1: 0.3528 × 1 ÷ 0.00028 = 1:1 260. Wrong: a ruler on the paper would say 1:1 000.</li>
+    <li>The ratio that puts it right: 0.28 ÷ 0.3528 = <strong>0.7937</strong>. Then 0.3528 × 0.7937 ÷ 0.00028 = <strong>1:1 000</strong>, exactly.</li>
+    <li>And the same ratio scales the styles (§39): a line of 1 px becomes 0.7937 point = 0.7937 × 0.3528 = <strong>0.28 mm</strong> on the paper, its intended size. One number corrects both: the pixel ratio already in render2d, set to 0.7937 for a page.</li>
+  </ol></div>
+
+  <h3>The page, as proposed</h3>
+<svg viewBox="0 0 297 210" style="width:100%;max-width:640px;height:auto;display:block;margin:12px auto;border:1px solid var(--line);background:#fff" font-family="system-ui,sans-serif">
+  <rect x="0" y="0" width="297" height="210" fill="#fff"/>
+  <rect x="10" y="10" width="277" height="190" fill="none" stroke="#bbb" stroke-dasharray="2 2" stroke-width="0.4"/>
+  <text x="10" y="18.5" font-size="7" font-weight="600" fill="#222">Title of the map</text>
+  <text x="287" y="18.5" font-size="3.6" fill="#666" text-anchor="end">subtitle · 3 November 2026</text>
+  <rect x="10" y="22" width="277" height="150" fill="#eef3ea" stroke="#333" stroke-width="0.5"/>
+  <text x="148.5" y="99" font-size="6" fill="#7a9" text-anchor="middle">the map, at 1:1 000</text>
+  <text x="148.5" y="107" font-size="3.6" fill="#7a9" text-anchor="middle">277 × 150 mm of paper = 277 × 150 m of ground</text>
+  <text x="285" y="170" font-size="2.6" fill="#555" text-anchor="end">© OpenStreetMap contributors</text>
+  <g transform="translate(14,180)">
+    <rect x="0" y="0" width="25" height="2.4" fill="#222"/><rect x="25" y="0" width="25" height="2.4" fill="#fff" stroke="#222" stroke-width="0.4"/>
+    <text x="0" y="7" font-size="3" fill="#222">0</text><text x="25" y="7" font-size="3" fill="#222" text-anchor="middle">25</text><text x="50" y="7" font-size="3" fill="#222" text-anchor="middle">50 m</text>
+    <text x="0" y="14" font-size="3.6" fill="#222">1:1 000</text>
+  </g>
+  <g transform="translate(90,178)" font-size="3.2" fill="#222">
+    <rect x="0" y="0" width="6" height="4" fill="#c98b6b" stroke="#7a4a35" stroke-width="0.4"/><text x="8" y="3.4">parcels</text>
+    <line x1="0" y1="9" x2="6" y2="9" stroke="#c33" stroke-width="0.8"/><text x="8" y="10.4">roads</text>
+    <circle cx="3" cy="16" r="1.4" fill="#36c"/><text x="8" y="17.4">addresses</text>
+    <text x="40" y="3.4" fill="#888">legend: one line per visible layer, its symbol</text>
+  </g>
+  <g transform="translate(270,186)">
+    <polygon points="0,-10 3.5,4 0,1.5 -3.5,4" fill="#222"/><text x="0" y="9" font-size="4" text-anchor="middle" fill="#222">N</text>
+  </g>
+  <text x="287" y="198" font-size="2.6" fill="#666" text-anchor="end">EPSG:31370 · render2d 0.5.0</text>
+</svg>
+  <p class="muted" style="text-align:center">A4 landscape, 10 mm margins. The map takes what the bands leave.</p>
+  <ul>
+    <li><strong>The sheet</strong>: A4 or A3, portrait or landscape, 10 mm margins. A4 is printed at home, A3 by a print shop; an A0 poster can come later with the same code.</li>
+    <li><strong>The map</strong>, in a thin frame, at the <strong>scale asked for</strong> (1:1 000, 1:5 000...) and centred on a point, or, without a scale, the <code>--bbox</code> (else the map's extent) fitted in the frame, the scale rounded <em>up</em> to the next "nice" one (1, 2, 2.5, 5 × 10<sup>n</sup>), so that the area fits and the scale can be written. The map is clipped to its frame.</li>
+    <li><strong>The title</strong> at the top, large; a <strong>subtitle</strong> beside it (a place, a purpose) and the <strong>date</strong>.</li>
+    <li><strong>The scale bar</strong>, bottom left, and the scale written "1:1 000". Its length is a round number of metres about a fifth of the frame: at 1:1 000, 50 m = 5 cm, cut in two.</li>
+    <li><strong>The legend</strong>, bottom middle: one line per visible layer, its symbol (the first rule active at the page's scale, as editor2d's Layers panel, its §68) and its title. The classes of a categorised style, unfolded, come with carto2D's "readable legend" (the same work serves the screen and the paper).</li>
+    <li><strong>The north arrow</strong>, bottom right, pointing to the <em>true</em> north at the map's centre, computed by PROJ: in Lambert 72 at Brussels it is straight up (+0.02°); on a map in EPSG:3034 it leans by <strong>+4.38°</strong>, clockwise, towards the east (§72's worked example, seen from the other side: the cone's formula gave −4.34°, the angle from the true north to the grid's; the arrow shows the true north from the page's "up"; 4.38 rather than 4.34 because PROJ uses the ellipsoid where the worked example rounded). An arrow that always points up would be wrong exactly where it matters.</li>
+    <li><strong>The attributions</strong> in the map's corner (§73), and in small letters at the bottom the system (EPSG:31370) and "render2d 0.5.0".</li>
+  </ul>
+
+  <h3>The scale bar and the ground</h3>
+  <p>A scale bar says "this length on the paper is that length on the ground". In Lambert 72 at Brussels, a metre of map is a metre of ground to 0.004 % (Lambert's scale factor there, 0.99996, §69): the bar is exact. On a Web Mercator map it is not: at 50.85° north, a metre of map is cos 50.85° = 0.6314 m of ground. A page at "1:1 000" in Mercator metres is at 1:1 584 on the ground. The scale and the bar are therefore computed <strong>on the ground</strong>, at the map's centre, with <code>GeodesicMeter</code> (§70, Karney's geodesics): 1:1 000 means 1 mm of paper for 1 m of ground, whatever the system. The report's <code>map:</code> line, which counts in map units, then says 1:7 903 for a page at 1:5 000 in Mercator: the <code>page:</code> line is the one that holds.</p>
+  <p>What matters is not the system's factor at the centre (render2d takes it into account), but its <strong>change across the page</strong>: render2d measures it at the four edges, and warns when they differ by more than 0.5 %. A district in Web Mercator: nothing to say (750 m north to south, a change of 0.01 %). An A3 at 1:1 000 000 in Web Mercator, 237 km north to south: 2.1° of latitude, so a change of tan 50.85° × 0.037 rad = 1.23 × 0.037 = <strong>4.6 %</strong>, said. EPSG:3034, whose factor at Brussels is 1.036 (a metre of its map is 1.036 m of ground), gives no warning on a district: the factor is not a fault, its change would be.</p>
+
+  <h3>How it is asked for</h3>
+  <p>On the command line, a few options next to those that exist:</p>
+<pre>render2d parcels.shp --style styles/parcelles.yaml \
+         --page A4-landscape --scale 1000 --center 148900 170700 \
+         --title "Grand-Place" --subtitle "UrbIS parcels" -o grand-place.pdf</pre>
+  <p>and in the map file (editor2d's project, viewer2d's <code>viewer.yaml</code>), a <code>print:</code> section with the same names, so that a project carries its page:</p>
+<pre>print:
+  page: A4-landscape
+  scale: 1000
+  title: Grand-Place
+  subtitle: UrbIS parcels</pre>
+  <p>The command line has the last word, as for everything else (§57). Without <code>--page</code>, nothing changes: <code>-o map.pdf</code> stays the map alone, edge to edge.</p>
+
+  <h3>What it is in code</h3>
+  <ul>
+    <li><code>PageSpec</code> (format, orientation, scale or fit, centre, title, subtitle, date, what to show) and <code>composePage(Map&amp;, PageSpec, Canvas&amp;)</code>: the frame, the map drawn in it (a clip, a translation, the pixel ratio 0.7937), then the bands. In <code>r2d_map</code>, beside the map: editor2d calls the same function.</li>
+    <li>The scale bar, the north arrow, the legend's symbols: drawn with the canvas's own vocabulary (paths, fills, text), so the PDF stays vector.</li>
+    <li>Tests: an A4 at 1:1 000 whose frame measures 785.2 points and shows 277 m; a 50 m bar of 141.7 points (50 mm); the arrow at 0° in Lambert and at −4.34° in EPSG:3034; a page in Mercator with its warning.</li>
+  </ul>
+
+  <h3>5a as built (0.5.0, 3 November)</h3>
+  <ul>
+    <li><code>src/map/page.hpp/.cpp</code>, in <code>r2d_map</code>: <code>PageSpec</code>, <code>parsePageFormat</code>, <code>planPage</code> (the sheet, the frame in whole points, the view, the scale on the ground, the north), <code>composePage</code> (the sheet, the map clipped to its frame at the pixel ratio 0.7937, the border, the title, the subtitle and the date, the scale bar, the north arrow, the small print), <code>scaleBar</code>, <code>scaleText</code>.</li>
+    <li>The canvas learnt two words: <code>clipRect</code> and <code>translate</code>. Every operation of the Cairo canvas multiplies Cairo's matrix rather than setting it, so the map lands in its frame, its text and its hatching too.</li>
+    <li><code>northAngle(crs, p)</code> in <code>gdal_reproject</code>: a step of 0.001° northwards, converted back to the map.</li>
+    <li>The command line: <code>--page A4-landscape</code>, <code>--print</code> (the map file's <code>print:</code>), <code>--scale 1000</code> (or <code>1:1000</code>), <code>--center X Y</code>, <code>--title</code>, <code>--subtitle</code>; a page is written as <code>.pdf</code> or <code>.svg</code>. The report's first line: <code>page: A4-landscape, 1:5 000, frame 277 x 150 mm = 1385 x 750 m of ground, north +0.02°</code>.</li>
+    <li>The map file: <code>print:</code> with <code>page</code>, <code>scale</code>, <code>center</code>, <code>title</code>, <code>subtitle</code>, read and written back; editor2d 0.6.4 keeps it when it saves a project.</li>
+    <li>The tests (<code>test_page</code>, 40 checks): this chapter's worked examples, to the hundredth of a point: the A4 sheet 841.89 × 595.28, the frame 785 × 425 points, 0.3528 m per point, the scale 1:1 000 with the ratio, the 50 m bar of 141.73 points; the north at +0.02° in Lambert and +4.38° in EPSG:3034; the Mercator factor 1/cos 50.85°; the fitted scales (3 610 → 1:5 000); the page drawn (white margin, the map inside the frame only, the border); <code>print:</code> read and written.</li>
+  </ul>
+
+  <h3>5b: the legend, the design</h3>
+  <p>A map without a legend says what is drawn only to the one who drew it. The legend goes in the foot band, between the scale bar and the north arrow (the sketch above). It is drawn by render2d, from the styles themselves, with <strong>the same code that draws the map</strong> (<code>drawSymbolizer</code>, §26): a hatching, a dash, a casing, a mark in the legend are exactly those of the map, never a second drawing that could drift from the first.</p>
+<svg viewBox="0 0 190 30" style="width:100%;max-width:640px;height:auto;display:block;margin:12px auto;border:1px solid var(--line);background:#fff" font-family="system-ui,sans-serif" font-size="2.7" fill="#222">
+  <text x="2" y="4" font-weight="600">roads</text>
+  <g transform="translate(2,6)"><line x1="0" y1="2" x2="7" y2="2" stroke="#999" stroke-width="2.2"/><line x1="0" y1="2" x2="7" y2="2" stroke="#f6c37a" stroke-width="1.4"/><text x="9" y="3">primary</text></g>
+  <g transform="translate(2,10.5)"><line x1="0" y1="2" x2="7" y2="2" stroke="#999" stroke-width="1.7"/><line x1="0" y1="2" x2="7" y2="2" stroke="#fff" stroke-width="1"/><text x="9" y="3">residential</text></g>
+  <g transform="translate(2,15)"><line x1="0" y1="2" x2="7" y2="2" stroke="#c77" stroke-width="0.6" stroke-dasharray="1 0.6"/><text x="9" y="3">footway</text></g>
+  <text x="48" y="4" font-weight="600">parcels</text>
+  <g transform="translate(48,6)"><rect x="0" y="0.5" width="7" height="3.5" fill="#c98b6b" stroke="#7a4a35" stroke-width="0.3"/><text x="9" y="3">Evere</text></g>
+  <g transform="translate(48,10.5)"><rect x="0" y="0.5" width="7" height="3.5" fill="#8bb07a" stroke="#4a6a3a" stroke-width="0.3"/><text x="9" y="3">Schaerbeek</text></g>
+  <g transform="translate(48,15)"><rect x="0" y="0.5" width="7" height="3.5" fill="#ddd" stroke="#999" stroke-width="0.3"/><text x="9" y="3">(other)</text></g>
+  <g transform="translate(94,1)"><circle cx="3.5" cy="2" r="1.3" fill="#36c"/><text x="9" y="3">addresses</text></g>
+  <g transform="translate(94,5.5)"><rect x="0" y="0.5" width="7" height="3.5" fill="#fff" stroke="#c33" stroke-width="0.5"/><text x="9" y="3">buildings (OSM)</text></g>
+  <text x="140" y="27" fill="#999" font-size="2.3">a group per layer, a line per class; top layer first</text>
+</svg>
+  <p class="muted" style="text-align:center">The foot band's middle, drawn by hand: three layers, their classes.</p>
+
+  <h4>What one legend line is</h4>
+  <ul>
+    <li><strong>A sample</strong> in a swatch of 7 × 3.5 mm: a rectangle for a polygon layer, a horizontal stroke for a line layer, the mark in the middle for a point layer; drawn by the symbolizers of the rule, at the paper's pixel ratio (§74: 1 px = 0.28 mm), so the widths are the map's.</li>
+    <li><strong>A text</strong> after it, 7.5 points: the rule's name ("Evere", "&lt; 10", "(other)", as classify() names them, §62) when the layer has several classes; the layer's <code>title:</code> (else its name) when it has one only.</li>
+  </ul>
+
+  <h4>Which lines</h4>
+  <ul>
+    <li><strong>The layers seen on the page</strong>: visible, and reaching the frame (as the attributions, §73). <strong>Top layer first</strong>, as in editor2d's Layers panel: the order the eye reads.</li>
+    <li><strong>The rules active at the page's scale</strong> only: a rule kept for 1:10 000 and above is not explained on a page at 1:1 000, where it draws nothing.</li>
+    <li><strong>One group per layer</strong>, its title above, when it has several classes; a single line when it has one.</li>
+    <li><strong>The passes of a style are stacked</strong>: OpenStreetMap's roads (§71) are drawn in 4 passes, the grey casing first, the colour on top. Their rules are matched <em>by name</em> across the passes, and the line "primary" draws the casing then the fill, in the passes' order, on the same sample: what the map shows. A rule without a name gets the layer's title.</li>
+    <li><strong>Not in the legend</strong>: the web basemaps (OpenStreetMap is a background, credited by its attribution, not explained); the text symbolizers (a label explains itself); a layer whose map file says <code>legend: false</code> (a helper layer, a frame). Without a symbolizer for the layer's geometry, a rule has no line.</li>
+    <li><strong>Sizes by attribute</strong> (proportional symbols, §41): the sample has no attribute, so the symbol is drawn at its fixed size. The scale of sizes ("10, 100, 1 000 inhabitants") is for later.</li>
+  </ul>
+
+  <h4>How much room</h4>
+  <div class="calc"><strong>The foot band, on the four sheets</strong><ol>
+    <li>The band is 28 mm high; a line is 4.5 mm, a group title too: <strong>5 lines</strong> a column, the bottom left free for the small print.</li>
+    <li>A column is 45 mm wide (the sample 7 mm, 2 mm, the text up to 34 mm: about 20 characters at 7.5 points, cut with "…" beyond).</li>
+    <li>The middle of the band: the frame's width, less the scale bar (60 mm) and the north arrow (18 mm). A4 landscape: 277 − 78 = 199 mm, <strong>4 columns, 20 lines</strong>. A4 portrait: 190 − 78 = 112 mm, 2 columns, 10 lines. A3 landscape: 400 − 78 = 322 mm, 7 columns, 35 lines. A3 portrait: 277 mm, as A4 landscape.</li>
+    <li>More lines than room: the last ones are left out, the report says how many ("legend: 6 lines not shown: A3, or fewer layers"). A larger band (or a legend beside the map) can come once a real map needs it.</li>
+  </ol></div>
+
+  <h4>Where it is asked for</h4>
+  <p>On by default on a page; <code>--no-legend</code>, or <code>legend: false</code> in <code>print:</code>, leaves the band's middle empty. Per layer, <code>legend: false</code> in the map file. The same lines feed the report (<code>legend: roads: primary, residential, footway; parcels...</code>), and later editor2d's Layers panel, whose symbols (its §68) could come from the same function: carto2D's "readable legend" (its roadmap's item 4) is this, on the screen.</p>
+  <p>In code: <code>legendEntries(Map&amp;, View)</code> (the layers, groups and lines, with their symbolizers, testable without drawing) and <code>drawLegend(Canvas&amp;, entries, box)</code> in <code>page.cpp</code>. Tests: a classified layer gives its classes in order and "(other)" last; the four passes of the OSM roads give one line per road type, its casing under its fill; a rule outside the scale gives none; a web layer, a text symbolizer and <code>legend: false</code> give none; 21 lines on an A4 landscape: 20 drawn, 1 said.</p>
+
+  <h3>5b as built (0.5.1, 3 November): two changes to the design</h3>
+  <ul>
+    <li><strong>The legend explains the page, not the style.</strong> Drawn first on a test page with four roads, it listed the OSM style's 13 kinds of road, motorway and trunk included. A legend that names what is not on the paper misleads. So <code>composePage</code> gives <code>legendEntries</code> the render's report: render2d already counts the features each rule drew (§31); only the rules that drew one stay (QGIS has the same as an option, "filter legend by map content"; here it is the rule). A style without filters is not counted per rule, since every rule draws every feature: its active rules stay as soon as the layer drew one. The test page: <code>roads: footway, primary, secondary, residential; parcels: Evere, Schaerbeek, (other)</code>.</li>
+    <li><strong>The OSM roads' rules renamed.</strong> The casing was called <code>primary-casing-near</code>, the fill <code>primary-near</code>: matched by name, they made two lines. They are now all <code>primary</code>, in every pass and scale band (a rule's name is a label, it may repeat); the legend's "primary" draws the grey casing, then the orange fill, as the map does. The YSLD round-trip test (§59) is unchanged on every style.</li>
+    <li>Not in the legend, as designed: the web basemaps, the text symbolizers, <code>legend: false</code>; and the local rasters too (an orthophoto has no symbol to explain).</li>
+    <li>Code: <code>legendEntries</code> (testable without drawing, used for the report's <code>legend:</code> line too), <code>drawLegend</code> (columns of 45 mm, lines of 4.5 mm, the samples clipped to their swatch so a 12-pixel casing stays inside, the texts cut with "…"), <code>Map::layerStyle</code>, <code>layerTitle</code>, <code>layerInLegend</code>; <code>LayerReport::layer</code> (its index: two layers may share a name). <code>--no-legend</code>, <code>legend: false</code> in <code>print:</code> and per layer, editor2d 0.6.5 keeping both.</li>
+    <li>Tests (<code>test_page</code>, 54 checks): 13 lines from the style at 1:5 000, the footways gone at 1:30 000, "primary" with its two symbolizers, top layer first, the basemap and the text-only layer left out; from the page drawn, the 3 roads of the file; 20 classes and their title on an A4 landscape: 1 line said not shown.</li>
+    <li>Seen, left for later: a group can be cut at the bottom of a column ("residential" alone at the top of the next one, its title above the previous one).</li>
+  </ul>
+
+  <h3>The steps</h3>
+  <ol>
+    <li><strong>5a</strong> ✓ 0.5.0 (above): the page in render2d: format, scale, frame, title, scale bar, north arrow, attributions; <code>--page</code> and <code>print:</code>.</li>
+    <li><strong>5b</strong> ✓ 0.5.1 (above): the legend, a group per layer, a line per class drawn on the page.</li>
+    <li><strong>5c</strong> ✓ editor2d 0.6.6 (its §77): File ▸ Print..., the dialog, the page's outline on the map to place it, the PDF written in editor2d's render thread by <code>composePage</code>, opened in the reader. render2d 0.5.2 gave it <code>pageFrame</code>, <code>mapPerGroundAt</code>, <code>niceScale</code>, to draw the outline without a Map.</li>
+  </ol>
+  <p>Then the release of carto2D 1.0: its name, the installer, the tests and builds automated.</p>
+</section>
+
+<!-- ============================================================== -->
 <section id="refs">
-  <h2>74. References</h2>
+  <h2>75. References</h2>
   <h3>Books</h3>
   <ul class="refs">
     <li><strong>Adobe Systems, <em>PostScript Language Reference Manual</em></strong> (the "red book"), 3<sup>rd</sup> ed., 1999. The origin of the path / fill / stroke model, of the even-odd and non-zero rules, of <code>gsave</code>/<code>grestore</code>. Chapters 10 and 11.</li>
@@ -3289,7 +3443,7 @@ bash:  find /c/temp/wmscache -type f | wc -l</pre>
 
 <!-- ============================================================== -->
 <section id="road">
-  <h2>75. Roadmap</h2>
+  <h2>76. Roadmap</h2>
   <ol class="road">
     <li>Step 1 — Matrix, canvas, Cairo surface: test shapes in PNG, SVG and PDF. ✓</li>
     <li>Step 2 — GDAL/OGR reading: drawing a real layer with a fixed style. ✓</li>
@@ -3308,6 +3462,7 @@ bash:  find /c/temp/wmscache -type f | wc -l</pre>
     <li>Step 3n ✓ — Classifying on the command line (§63): <code>--categorize</code>, <code>--graduate</code>, <code>--write-style</code>; <code>classify()</code>, the same function for editor2d and render2d.</li>
     <li>Step 3o ✓ — Selecting by attributes (§64): <code>Map::queryWhere</code>, <code>GdalLayer::forFids</code>, <code>--where</code>. Client: editor2d's selection by expression (4a).</li>
     <li>Step 4a ✓ — Rasters (§65, §66): reading the view's window with its overviews, bands into ARGB32, transparent nodata, the <code>raster</code> symbolizer and its opacity. Same coordinate system as the map. Client: editor2d's raster layers.</li>
+    <li>Step 5 — Printing (§74): a page at an exact scale, in PDF: the sheet, the frame, the title, the scale bar on the ground, the north arrow by PROJ, the attributions, a simple legend; <code>--page</code> and <code>print:</code>. Chosen on 2 November before the labels, for carto2D 1.0. 5a (0.5.0, 3 November) ✓ the page; 5b (0.5.1) ✓ the legend; 5c (0.5.2, editor2d 0.6.6) ✓ editor2d's Print. Step closed on 3 November.</li>
     <li>Step 4c — Web basemaps (§73): OpenStreetMap's tiles, the Region's WMTS and WMS, through GDAL's drivers. 4c-1 (0.4.9) ✓ the User-Agent, the cache, the clip to the map's area of use, the extent, the report, <code>basemaps/</code>. 4c-2 (0.4.10) ✓ the attributions, <code>--no-attribution</code> for tiles, no OSM pyramid. Phase closed on 2 November.</li>
     <li>Step 4b — On-the-fly reprojection (PROJ), §69 to §71: 4b-1 (0.4.5) ✓ vectors, <code>--crs</code>, <code>crs:</code> of the map and of a layer, the conversion per layer, the catalogue for editor2d; tested on OpenStreetMap against UrbIS. 4b-2 (0.4.8) ✓ rasters warped on the fly (§72). OpenStreetMap's tiles: step 4c, with the other web basemaps.</li>
     <li>Later, after reprojection and PostGIS, once editor2d and viewer2d are rich enough: <strong>render2d as a server</strong>, a program that stays up with its map open and answers over HTTP (<code>/map</code>, <code>/tiles/z/x/y</code>, <code>/query</code>, <code>/legend</code>, a style changed live) and as a <strong>standard WMS</strong>, readable by QGIS and any GIS client. The favoured option: <code>render2d --serve</code>, a process that stays up with its map open and talks through a pipe (stdin/stdout), one JSON line per request and per answer, the image as bytes right after, with the vocabulary of editor2d's commands (<code>map.render</code>, <code>layer.add</code>…). In front of it, FastAPI (or viewer2d) keeps a small pool of these processes: a GDAL crash kills only one, they draw in parallel. The other paths stay open: an HTTP server in C++ inside render2d, or render2d as a Python module (pybind11) if every millisecond counts. Then, real time: telling the server an area has changed, redrawing, invalidating the tiles.</li>
@@ -3319,7 +3474,7 @@ bash:  find /c/temp/wmscache -type f | wc -l</pre>
     <li>Step 7 — Vector tiles (MVT): the same reading, clipping and simplification steps, an MVT encoder next to the canvas, and the translation of YSLD into a MapLibre style.</li>
   </ol>
   <p class="muted">The "style" and "reprojection" steps were swapped after the first rendering of Brussels: all the test data are in Lambert 72, and the most visible need was style (outlines wider than the buildings at small scale).</p>
-  <p class="muted">Versions follow this roadmap: <code>0.&lt;step&gt;.&lt;sub-step&gt;</code>, so 0.3.4 for step 3d, 0.3.5 for step 3e, 0.3.6 for step 3f, 0.3.7 for step 3g, 0.3.8 for step 3h, 0.3.9 for step 3i, 0.3.10 for step 3j, 0.3.11 for step 3k, 0.3.12 for step 3l, 0.3.13 for step 3m, 0.3.14 for step 3n (0.3.15: scale bands; 0.3.16: reclassifying), 0.3.17 for step 3o, 0.4.0 for step 4a (0.4.1: <code>listLayers</code>; 0.4.2: the session password; 0.4.3: tables without geometry; for editor2d; 0.4.4: the data beside the executable, for the Windows zip, §68), 0.4.5 for step 4b-1 (vectors reprojected, §70), 0.4.6: the PostGIS password looked for by render2d (§67), 0.4.7: <code>GeodesicMeter</code> (§70), 0.4.8 for step 4b-2 (rasters warped, §72), 0.4.9 for step 4c-1 (web basemaps, §73), 0.4.10 for step 4c-2 (attributions, §73). <code>render2d --version</code> shows it, with the build date and the GDAL and Cairo versions, and the report starts with it: a forgotten executable is spotted immediately.</p>
+  <p class="muted">Versions follow this roadmap: <code>0.&lt;step&gt;.&lt;sub-step&gt;</code>, so 0.3.4 for step 3d, 0.3.5 for step 3e, 0.3.6 for step 3f, 0.3.7 for step 3g, 0.3.8 for step 3h, 0.3.9 for step 3i, 0.3.10 for step 3j, 0.3.11 for step 3k, 0.3.12 for step 3l, 0.3.13 for step 3m, 0.3.14 for step 3n (0.3.15: scale bands; 0.3.16: reclassifying), 0.3.17 for step 3o, 0.4.0 for step 4a (0.4.1: <code>listLayers</code>; 0.4.2: the session password; 0.4.3: tables without geometry; for editor2d; 0.4.4: the data beside the executable, for the Windows zip, §68), 0.4.5 for step 4b-1 (vectors reprojected, §70), 0.4.6: the PostGIS password looked for by render2d (§67), 0.4.7: <code>GeodesicMeter</code> (§70), 0.4.8 for step 4b-2 (rasters warped, §72), 0.4.9 for step 4c-1 (web basemaps, §73), 0.4.10 for step 4c-2 (attributions, §73), 0.5.0 for step 5a (the printed page, §74), 0.5.1 for step 5b (its legend), 0.5.2 for step 5c (what editor2d's Print needs). <code>render2d --version</code> shows it, with the build date and the GDAL and Cairo versions, and the report starts with it: a forgotten executable is spotted immediately.</p>
   <p class="muted">Decided on 31 October, for editor2d's 1.0 (renamed <strong>carto2D</strong>), what render2d must learn, in this order: rasters in another system (4b-2, §72 ✓ 2 November), web basemaps (4c: OpenStreetMap's tiles, WMTS, WMS, through GDAL's drivers), and labels without collisions, names along lines. Then the publication, automated: tests and builds on Windows and Linux at every tag, the installer, an AppImage.</p>
   <p class="muted">Next, chosen on 30 October: <strong>a demonstration package</strong>, because people try what installs with a double click. An Inno Setup installer (its compiler <code>ISCC.exe</code> called at the end of <code>tools/package-windows.sh</code>): render2d as in the Windows zip, viewer2d with an embedded Python (NiceGUI and FastAPI inside), a district of Brussels already prepared (UrbIS buildings, parcels and addresses, OSM roads, indexed GeoPackages, the styles, a <code>viewer.yaml</code> with relative paths), and a Start-menu icon that starts viewer2d and opens the browser on the Grand-Place. Notes first.</p>
   <p class="muted">Desirable, without a date: label collisions and labels straddling tile edges.</p>

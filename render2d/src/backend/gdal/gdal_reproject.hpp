@@ -88,6 +88,13 @@ const CrsEntry* catalogEntry(const CrsInfo& crs);
 // for the systems made for that place).
 std::optional<Point> toLonLat(const CrsInfo& crs, Point p);
 
+// §74: where the true north points at `p`, as an angle from the map's "up",
+// in degrees, positive towards the east (clockwise on the page): +0.02 in
+// Lambert 72 at Brussels, +4.4 in EPSG:3034 there (its grid north is turned
+// the other way: the convergence, -4.34 by the cone's formula, §74). Empty when the
+// system is unknown or `p` cannot be converted (a north arrow is then left out).
+std::optional<double> northAngle(const CrsInfo& crs, Point p);
+
 class CrsTransform;
 
 // ---- Measuring (editor2d's Distance and Area tools, its §72) --------------------

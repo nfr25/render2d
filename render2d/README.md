@@ -36,6 +36,8 @@ the code follows them.
 | 4b-1 | Reprojection on the fly of vector layers (PROJ): `--crs`, `crs:` in the config, each layer converted to the map's system | done |
 | 4b-2 | Rasters in another system, warped on the fly (a warped VRT, the file's overviews, transparent corners) | done |
 | 4c-1 | Web basemaps: WMS, WMTS and tiles (OpenStreetMap) through GDAL, a cache on the disk, clipped to the map system's area, ready files in `basemaps/` | done |
+| 5a | A printed page at an exact scale on the ground (PDF, A4 / A3): frame, title, scale bar, north arrow, attributions; `--page`, `print:` | done |
+| 5b | The page's legend: a group per layer, a line per class drawn on the page, the map's own symbols | done |
 | 4c-2 | Attributions on the map (`attribution:` per layer, OpenStreetMap's by itself), `--no-attribution` for tiles | done |
 | — | Clipping, simplification | |
 | 5 | Full command line, JSON warnings | |
@@ -381,6 +383,42 @@ render2d basemaps/osm.xml "PG:host=<server> dbname=<database> user=<user>::parce
 OpenStreetMap's tiles are for the views someone looks at: never a tiles2d
 pyramid from their servers, and "© OpenStreetMap contributors" on the map.
 The Region's services are CC0 (public domain).
+
+### A printed page (step 5a)
+
+`--page` composes a sheet instead of an image of the area: the map in a
+frame at an exact scale, a title, the date, a scale bar, a north arrow,
+the attributions. Written as PDF (vector: sharp at any size) or SVG.
+
+```bash
+render2d parcels.shp --style styles/parcelles.yaml \
+         --page A4-landscape --scale 1000 --center 148900 170700 \
+         --title "Grand-Place" --subtitle "UrbIS parcels" -o grand-place.pdf
+```
+
+- `--page A4-landscape`, `A4-portrait`, `A3-landscape`, `A3-portrait`;
+- `--scale 1000` (or `1:1000`): 1 mm of paper for 1 m of **ground**, whatever
+  the map's system (measured on the ellipsoid at the centre); without it,
+  the area (`--bbox`, else all the layers) fitted at the next round scale;
+- `--center X Y` in the map's system; without it, the area's centre;
+- the north arrow points to the true north, computed at the centre;
+- the line widths of the styles keep their size on paper (1 px = 0.28 mm);
+- the legend, at the bottom: a group per layer (top layer first), a line per
+  class **drawn on the page** (a style's other classes are not listed), with
+  the map's own symbols; not the web basemaps nor the labels.
+  `--no-legend`, `legend: false` in `print:`, or `legend: false` on a layer.
+
+The same in a map file, so that a project carries its page (`--print`
+uses it; the command line has the last word):
+
+```yaml
+print:
+  page: A4-landscape
+  scale: 1000
+  center: [148900, 170700]
+  title: Grand-Place
+  subtitle: UrbIS parcels
+```
 
 ### Styles
 

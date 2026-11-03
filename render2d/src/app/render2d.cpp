@@ -22,6 +22,7 @@
 #include "backend/gdal/gdal_reproject.hpp"   // crsFromUser (§70)
 #include "core/view.hpp"
 #include "map/config.hpp"
+#include "map/page.hpp"
 #include "map/map.hpp"
 #include "render/labels.hpp"
 #include "style/catalog.hpp"
@@ -49,6 +50,13 @@ const char* kUsage =
     "  --crs CRS              the map's coordinate system, in metres: EPSG:31370, EPSG:3857...\n"
     "                         (default: crs: of --config, else the first layer's; EPSG:3857 if\n"
     "                         that one is in degrees). Layers in another are converted (§70)\n"
+    "  --page A4-landscape    a printed page (A4 or A3, portrait or landscape), written as .pdf\n"
+    "                         or .svg: the map at an exact scale in a frame, a title, a scale\n"
+    "                         bar, a north arrow (§74). --print: the page of --config's print:\n"
+    "  --scale 1000           the page's scale on the ground (1:1000); default: the area fitted\n"
+    "  --center X Y           the page's centre, in the map's system; default: the area's\n"
+    "  --title T, --subtitle S   written at the top of the page\n"
+    "  --no-legend            a page without its legend (one line per layer and class)\n"
     "  --no-attribution       do not write the layers' attributions (\u00A9 OpenStreetMap...)\n"
     "                         in the corner: for the tiles of a pyramid, shown by the web page\n"
     "  --bbox XMIN YMIN XMAX YMAX   area to draw, in the map's CRS (default: all the layers)\n"
@@ -101,6 +109,13 @@ struct Options {
     std::optional<ClassifySettings> classify;    // --categorize / --graduate (§63)
     std::string              writeStyle;         // --write-style
     std::string              where;              // --where (§64)
+    // §74: a printed page. --page or --print makes one; the others fill it.
+    std::optional<std::string> page;             // --page A4-landscape
+    bool                       print = false;    // --print: the map file's print:
+    std::optional<double>      scale;            // --scale 1000
+    std::optional<Point>       center;           // --center X Y
+    std::optional<std::string> title, subtitle;  // --title, --subtitle
+    bool                       noLegend = false; // --no-legend (§74, 5b)
 };
 
 bool parseDouble(const char* s, double& out) {
@@ -134,6 +149,38 @@ bool parseArgs(int argc, char** argv, Options& o) {
             o.crs = argv[++i];
         } else if (a == "--no-attribution") {   // §73
             o.attributions = false;
+        } else if (a == "--page") {             // §74
+            if (!need(1)) return false;
+            o.page = argv[++i];
+        } else if (a == "--print") {
+            o.print = true;
+        } else if (a == "--no-legend") {
+            o.noLegend = true;
+        } else if (a == "--scale") {
+            if (!need(1)) return false;
+            double v = 0.0;
+            std::string t = argv[++i];
+            if (t.rfind("1:", 0) == 0) t = t.substr(2);   // "1:1000" as well as "1000"
+            if (!parseDouble(t.c_str(), v) || !(v > 0.0)) {
+                std::fprintf(stderr, "--scale: a positive number expected (1000 for 1:1 000), got '%s'\n", argv[i]);
+                return false;
+            }
+            o.scale = v;
+        } else if (a == "--center") {
+            if (!need(2)) return false;
+            Point c;
+            if (!parseDouble(argv[i + 1], c.x) || !parseDouble(argv[i + 2], c.y)) {
+                std::fprintf(stderr, "--center: two numbers expected (X Y, in the map's system)\n");
+                return false;
+            }
+            i += 2;
+            o.center = c;
+        } else if (a == "--title") {
+            if (!need(1)) return false;
+            o.title = argv[++i];
+        } else if (a == "--subtitle") {
+            if (!need(1)) return false;
+            o.subtitle = argv[++i];
         } else if (a == "--bbox") {
             if (!need(4)) return false;
             double v[4];
@@ -407,6 +454,7 @@ int main(int argc, char** argv) {
     std::optional<Envelope>  startBbox;
     std::string              crsText = opt.crs;   // --crs, else the config's crs:
     std::vector<std::string> configLines;   // printed at the top of the report
+    std::optional<PageSpec>  configPrint;   // §74: print: of the config
     if (opt.config) {
         const ConfigResult c = loadConfig(*opt.config);
         if (!c.ok) {
@@ -417,6 +465,7 @@ int main(int argc, char** argv) {
         specs     = c.config.layers;
         startBbox = c.config.startBbox;
         if (crsText.empty()) crsText = c.config.crs;
+        configPrint = c.config.print;
         configLines.push_back("config: " + std::filesystem::absolute(c.config.path).lexically_normal().generic_string());
     }
     for (const SourceSpec& s : opt.sources) {
@@ -452,6 +501,63 @@ int main(int argc, char** argv) {
         for (const auto& w : warnings) std::fprintf(stderr, "error: %s\n", w.c_str());
         std::fprintf(stderr, "nothing to draw\n");
         return 1;
+    }
+
+    // §74: a printed page instead of an image of the area.
+    if (opt.page || opt.print) {
+        if (opt.print && !opt.page && !configPrint) {
+            std::fprintf(stderr, "error: --print: the map file has no print: section (or give --page)\n");
+            return 2;
+        }
+        PageSpec page = configPrint ? *configPrint : PageSpec{};
+        std::string error;
+        if (opt.page && !parsePageFormat(*opt.page, page, error)) {
+            std::fprintf(stderr, "error: --page: %s\n", error.c_str());
+            return 2;
+        }
+        if (opt.scale) page.scale = opt.scale;
+        if (opt.center) page.center = opt.center;
+        if (opt.title) page.title = *opt.title;
+        if (opt.subtitle) page.subtitle = *opt.subtitle;
+        if (opt.noLegend) page.legend = false;
+        page.generator = std::string("render2d ") + kVersion;
+        const std::string ext = std::filesystem::path(opt.output).extension().string();
+        if (ext != ".pdf" && ext != ".PDF" && ext != ".svg" && ext != ".SVG") {
+            std::fprintf(stderr, "error: a page is written as .pdf (or .svg), not '%s'\n", opt.output.c_str());
+            return 2;
+        }
+        const auto plan = planPage(map, page, opt.bbox ? opt.bbox : startBbox, error);
+        if (!plan) {
+            std::fprintf(stderr, "error: %s\n", error.c_str());
+            return 1;
+        }
+        auto target = CairoTarget::create(opt.output, ImageSize{static_cast<int>(std::lround(plan->width)),
+                                                                static_cast<int>(std::lround(plan->height))}, error);
+        if (!target) {
+            std::fprintf(stderr, "error: %s\n", error.c_str());
+            return 1;
+        }
+        const MapReport report = composePage(map, page, *plan, target->canvas());
+        std::printf("render2d %s\n", kVersion);
+        for (const auto& line : configLines) std::printf("%s\n", line.c_str());
+        std::printf("page: %s, %s, frame %.0f x %.0f mm = %.0f x %.0f m of ground", pageFormatText(page).c_str(),
+                    scaleText(plan->scale).c_str(), plan->frameW * kPointMm, plan->frameH * kPointMm,
+                    plan->frameW * kPointMm * plan->scale / 1000.0, plan->frameH * kPointMm * plan->scale / 1000.0);
+        if (plan->north) std::printf(", north %+.2f\u00B0", *plan->north);
+        std::printf("\n");
+        for (const auto& line : reportLines(report)) std::printf("%s\n", line.c_str());
+        if (page.legend) {   // §74 (5b)
+            const std::string legend = legendText(legendEntries(map, plan->view, kPixelPerPoint, &report));
+            std::printf("  legend: %s\n", legend.empty() ? "(nothing to explain)" : legend.c_str());
+        }
+        for (const auto& w : report.warnings) warn(w);
+        if (!target->finish(error)) {
+            std::fprintf(stderr, "error: %s\n", error.c_str());
+            return 1;
+        }
+        std::printf("wrote %s\n", opt.output.c_str());
+        for (const auto& w : warnings) std::printf("warning: %s\n", w.c_str());
+        return 0;
     }
 
     // 2. Area: given, or the total extent of the layers.

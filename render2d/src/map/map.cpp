@@ -129,6 +129,8 @@ struct Map::Layer {
     int                        index = 0;        // the default style colour: its position when opened (§46), kept when it moves (§58)
     bool                       visible = true;
     std::string                attribution;      // §73: the map file's, else the source's
+    std::string                title;            // §74: the map file's title, else the source's name
+    bool                       legend = true;    // §74: legend: false in the map file
 
     std::optional<Style>       style;            // from --style, as read (original)
     std::optional<Style>       scaledStyle;      // the same, times the pixel ratio
@@ -201,6 +203,8 @@ std::unique_ptr<Map::Layer> Map::openLayer(const LayerSpec& spec, int colour,
     }
     layer->visible = spec.visible;
     layer->attribution = spec.attribution.empty() ? layer->info().attribution : spec.attribution;   // §73
+    layer->title  = spec.title.empty() ? layer->info().name : spec.title;   // §74
+    layer->legend = spec.legend;
 
     // Style file: warnings are reported, a bad file falls back to the default.
     if (spec.style) {
@@ -361,6 +365,16 @@ const CrsInfo& Map::layerCrs(int i) const { return layers_.at(static_cast<std::s
 
 const std::string& Map::layerAttribution(int i) const { return layers_.at(static_cast<std::size_t>(i))->attribution; }
 
+Style Map::layerStyle(int i, GeomType type) const {
+    const Layer& layer = *layers_.at(static_cast<std::size_t>(i));
+    return layer.style ? *layer.style : defaultStyle(type, layer.index);
+}
+const std::string& Map::layerTitle(int i) const { return layers_.at(static_cast<std::size_t>(i))->title; }
+bool Map::layerInLegend(int i) const {
+    const Layer& layer = *layers_.at(static_cast<std::size_t>(i));
+    return layer.visible && !layer.unusable && layer.legend && !layer.raster;   // a raster: no symbol to explain (§74)
+}
+
 const std::string& Map::layerReprojection(int i) const {
     static const std::string none;
     const Layer& layer = *layers_.at(static_cast<std::size_t>(i));
@@ -395,7 +409,9 @@ MapReport Map::render(Canvas& cv, const View& view, const std::function<bool()>&
     auto warn = [&](const std::string& w) { report.warnings.push_back(w); };
 
     std::vector<Label> labels;   // §35: drawn after all the layers, above them
-    for (const auto& layer : layers_) {
+    for (std::size_t k = 0; k < layers_.size(); ++k) {
+        const auto& layer = layers_[k];
+        const int index = static_cast<int>(k);   // §74: the report says which layer
         if (!layer->visible) continue;
         if (stop && stop()) { report.stopped = true; break; }
 
@@ -409,13 +425,13 @@ MapReport Map::render(Canvas& cv, const View& view, const std::function<bool()>&
                                                      layer->scaledStyle ? &*layer->scaledStyle : nullptr,
                                                      report.warnings);
             report.layers.push_back({li.name, st, layer->toMap ? layer->toMap->description() : std::string(),
-                                     li.web ? layer->raster->openMs() : 0.0});   // §72, §73
+                                     li.web ? layer->raster->openMs() : 0.0, index});   // §72, §73, §74
             if (st.passes == 0) warn(li.name + ": no rule of the style applies at scale 1:" +
                                      std::to_string(static_cast<long>(std::lround(v.scaleDenominator()))));
             continue;
         }
         const LayerRenderStats st = renderLayer(layer->features(), cv, v, layer->styles(), &labels);
-        report.layers.push_back({li.name, st, layer->toMap ? layer->toMap->description() : std::string()});
+        report.layers.push_back({li.name, st, layer->toMap ? layer->toMap->description() : std::string(), 0.0, index});
 
         const ReadStats& rs = st.read;
         if (!st.missingFields.empty()) {

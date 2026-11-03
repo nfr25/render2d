@@ -43,6 +43,8 @@ public:
 
     void save() override;
     void restore() override;
+    void clipRect(double x, double y, double w, double h) override;
+    void translate(double dx, double dy) override;
 
 private:
     cairo_t*  cr_;

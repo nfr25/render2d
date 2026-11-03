@@ -209,4 +209,13 @@ void CairoCanvas::stroke(const StrokeStyle& style, PathMode mode) {
 void CairoCanvas::save()    { cairo_save(cr_); }
 void CairoCanvas::restore() { cairo_restore(cr_); }
 
+// §74: every operation of this canvas multiplies Cairo's matrix (never sets
+// it), so a map drawn after these lands in its frame, text and hatching too.
+void CairoCanvas::clipRect(double x, double y, double w, double h) {
+    cairo_new_path(cr_);
+    cairo_rectangle(cr_, x, y, w, h);
+    cairo_clip(cr_);
+}
+void CairoCanvas::translate(double dx, double dy) { cairo_translate(cr_, dx, dy); }
+
 } // namespace r2d

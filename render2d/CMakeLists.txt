@@ -81,6 +81,7 @@ target_link_libraries(r2d_render PUBLIC r2d_canvas r2d_style PRIVATE r2d_warning
 add_library(r2d_map STATIC
     src/map/map.cpp
     src/map/config.cpp      # viewer.yaml: --config, and editor2d (§57)
+    src/map/page.cpp        # a printed page at an exact scale (§74)
 )
 target_link_libraries(r2d_map PUBLIC r2d_gdal r2d_style r2d_render PRIVATE PkgConfig::YAMLCPP r2d_warnings)
 
@@ -159,6 +160,11 @@ add_executable(test_web tests/test_web.cpp)   # §73: web basemaps, without the 
 target_link_libraries(test_web PRIVATE r2d_map r2d_cairo r2d_warnings)
 target_compile_definitions(test_web PRIVATE R2D_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_test(NAME web COMMAND test_web)
+
+add_executable(test_page tests/test_page.cpp)   # §74: the printed page, the notes' worked examples
+target_link_libraries(test_page PRIVATE r2d_map r2d_cairo r2d_warnings)
+target_compile_definitions(test_page PRIVATE R2D_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_test(NAME page COMMAND test_page)
 
 add_executable(test_hit tests/test_hit.cpp)
 target_link_libraries(test_hit PRIVATE r2d_render r2d_warnings)
