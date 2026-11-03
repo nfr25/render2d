@@ -2,6 +2,7 @@
 #include "style/ysld_writer.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <charconv>
 #include <cmath>
 #include <cstdio>
@@ -9,6 +10,18 @@
 #include <sstream>
 
 namespace r2d {
+
+namespace {
+// §75: "tree.svg", ".SVG" (the same test as render/svg_symbol, which the
+// style library cannot depend on).
+bool isSvgFile(const std::string& path) {
+    if (path.size() < 4) return false;
+    std::string ext = path.substr(path.size() - 4);
+    for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return ext == ".svg";
+}
+} // namespace
+
 
 namespace {
 
@@ -178,7 +191,7 @@ private:
         if (!p.image.empty()) {
             line(8, "- external:");
             line(12, "url: " + quoted(imagePath(p.image)));
-            line(12, "format: image/png");
+            line(12, std::string("format: ") + (isSvgFile(p.image) ? "image/svg+xml" : "image/png"));   // §75
         }
         // The mark: always written without an image; with one, only when it
         // is not the reader's default (grey, black outline, circle).

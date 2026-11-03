@@ -273,6 +273,31 @@ rules:
         CHECK(d.graphicFill->stroke && d.graphicFill->stroke->width == 1.0);
     }
     std::filesystem::remove(dir + "/r2d_icon.png");
+
+    // §75: SVG images; the format follows the extension when it is not given.
+    { std::ofstream(dir + "/r2d_icon.svg") << "<svg/>"; }
+    const YsldResult v = parseYsld(R"(
+rules:
+- symbolizers:
+  - point: {symbols: [external: {url: r2d_icon.svg, format: image/svg+xml}]}
+  - point: {symbols: [external: {url: r2d_icon.svg}]}
+  - point: {symbols: [external: {url: r2d_icon.svg, format: image/png}]}
+  - point: {symbols: [external: {url: r2d_icon.svg, format: image/gif}]}
+)", dir);
+    CHECK(v.style.has_value());
+    if (v.style) {
+        const auto& vs = v.style->featureStyles[0].rules[0].symbolizers;
+        CHECK(vs.size() == 4);
+        if (vs.size() == 4) {
+            CHECK(std::get<PointSymbolizer>(vs[0]).image.find("r2d_icon.svg") != std::string::npos);
+            CHECK(std::get<PointSymbolizer>(vs[1]).image.find("r2d_icon.svg") != std::string::npos);
+            CHECK(std::get<PointSymbolizer>(vs[2]).image.empty());   // an SVG said to be a PNG
+            CHECK(std::get<PointSymbolizer>(vs[3]).image.empty());
+        }
+    }
+    CHECK(hasWarning(v, "its format is image/svg+xml"));
+    CHECK(hasWarning(v, "'image/gif' ignored"));
+    std::filesystem::remove(dir + "/r2d_icon.svg");
 }
 
 } // namespace

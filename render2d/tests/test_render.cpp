@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -502,6 +503,69 @@ void testImage() {
     std::filesystem::remove(path);
 }
 
+// §75: an SVG drawn as paths at `size` pixels high: its fill, its stroke
+// scaled with it, the rotation; a gradient as its stops' mean; a file that
+// cannot be read gives the mark and one error.
+void testSvg() {
+    const std::filesystem::path dir = std::filesystem::temp_directory_path();
+    const std::string path = (dir / "r2d_symbol.svg").string();
+    // 20 x 20: red on the left half, blue on the right, a green ring of
+    // radius 4 (stroke 2) in the middle. Drawn 40 px high: 2 px per unit.
+    std::ofstream(path) << R"(<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
+  <rect x="0" y="0" width="10" height="20" fill="#FF0000"/>
+  <rect x="10" y="0" width="10" height="20" fill="#0000FF"/>
+  <circle cx="10" cy="10" r="4" fill="none" stroke="#00FF00" stroke-width="2"/>
+</svg>)";
+    PointSymbolizer p = mark(MarkShape::Circle, 40.0);
+    p.image = path;
+    TestImage img(100, 100);
+    drawSymbolizer(img.canvas, kView.worldToImage, pointAt(50, 50), p);   // spans 30..70
+    CHECK(img.red(35, 50) == 255 && img.blue(35, 50) == 0);    // the red half
+    CHECK(img.blue(65, 50) == 255 && img.red(65, 50) == 0);    // the blue half
+    CHECK(img.green(42, 50) == 255 && img.red(42, 50) == 0);   // the ring: 8 px from the centre, 4 px wide
+    CHECK(img.green(50, 58) == 255 && img.blue(50, 58) == 0);
+    CHECK(img.red(46, 50) == 255 && img.green(46, 50) == 0);   // inside the ring: the rect again
+    CHECK(img.green(25, 50) == 255 && img.red(25, 50) == 255); // white beyond the symbol
+    CHECK(img.green(50, 27) == 255);
+
+    // Turned by 90 degrees: the halves are now above and below.
+    TestImage turned(100, 100);
+    SymbolContext rot;
+    rot.rotation = 90.0;
+    drawSymbolizer(turned.canvas, kView.worldToImage, pointAt(50, 50), p, rot);
+    CHECK(turned.blue(35, 46) == 255 || turned.red(35, 46) == 255);   // still drawn there...
+    CHECK(turned.red(50, 35) != turned.red(50, 65));                  // ...but split top/bottom
+    CHECK(turned.red(35, 46) == turned.red(65, 46));                  // and no longer left/right
+
+    // A gradient from red to blue: one colour, their mean.
+    const std::string grad = (dir / "r2d_gradient.svg").string();
+    std::ofstream(grad) << R"svg(<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">
+  <defs><linearGradient id="g"><stop offset="0" stop-color="#FF0000"/><stop offset="1" stop-color="#0000FF"/></linearGradient></defs>
+  <rect width="10" height="10" fill="url(#g)"/>
+</svg>)svg";
+    p.image = grad;
+    p.size = 20.0;
+    TestImage mean(100, 100);
+    drawSymbolizer(mean.canvas, kView.worldToImage, pointAt(50, 50), p);
+    CHECK(std::abs(mean.red(50, 50) - 128) <= 1 && std::abs(mean.blue(50, 50) - 128) <= 1 && mean.green(50, 50) == 0);
+
+    // Not an SVG: the mark (a black circle) and one error.
+    const std::string bad = (dir / "r2d_bad.svg").string();
+    std::ofstream(bad) << "not an svg";
+    p.image = bad;
+    TestImage img2(100, 100);
+    std::vector<std::string> errors;
+    SymbolContext ctx;
+    ctx.errors = &errors;
+    drawSymbolizer(img2.canvas, kView.worldToImage, pointAt(50, 50), p, ctx);
+    drawSymbolizer(img2.canvas, kView.worldToImage, pointAt(50, 50), p, ctx);
+    CHECK(errors.size() == 1 && errors[0].find("r2d_bad.svg") != std::string::npos);
+    CHECK(img2.red(50, 50) == 0);
+    std::filesystem::remove(path);
+    std::filesystem::remove(grad);
+    std::filesystem::remove(bad);
+}
+
 // §43: hatching anchored to the world: two images side by side give exactly
 // the pixels of one image twice as wide, even with a 10-pixel tile.
 void testHatchSeam() {
@@ -553,6 +617,7 @@ int main() {
     testMarks();
     testSymbolSizes();
     testImage();
+    testSvg();
     testHatchSeam();
     return check::summary();
 }

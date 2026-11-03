@@ -6,7 +6,7 @@
 
 namespace r2d {
 
-inline constexpr const char* kVersion = "0.5.2";
-inline constexpr const char* kVersionStep = "step 5c (0.5.2: pageFrame, mapPerGroundAt, niceScale, for editor2d's Print)";
+inline constexpr const char* kVersion = "0.5.3";
+inline constexpr const char* kVersionStep = "step 3d-2 (0.5.3: SVG symbols, read by nanosvg)";
 
 } // namespace r2d

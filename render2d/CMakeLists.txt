@@ -73,8 +73,12 @@ add_library(r2d_render STATIC
     src/render/symbolize.cpp
     src/render/labels.cpp
     src/render/render_layer.cpp
+    src/render/svg_symbol.cpp   # §75: SVG symbols, read by nanosvg (third_party/nanosvg, one header)
 )
 target_link_libraries(r2d_render PUBLIC r2d_canvas r2d_style PRIVATE r2d_warnings)
+# nanosvg is third-party code: included as a system header, so that our
+# strict warnings (-Wshadow, -Wconversion...) are not applied to it.
+target_include_directories(r2d_render SYSTEM PRIVATE third_party/nanosvg)
 
 # --- map: layers kept open, styles read once, the report (§45 to §47) ----------
 # Draws on any Canvas: no Cairo here, the program chooses the surface.

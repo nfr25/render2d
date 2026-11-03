@@ -19,6 +19,7 @@ the code follows them.
 | 3b | Attributes and filters in styles (CQL, `else` rules) | done |
 | 3c | Labels: `text` symbolizer, halo, arithmetic, rotation from an attribute; `--pixel-ratio` | done |
 | 3d | Symbols: well-known marks, size and rotation from attributes, PNG images, hatching | done |
+| 3d-2 | SVG symbols, read by nanosvg (one header, no DLL) and drawn as paths | done |
 | 3e | The map as a library (`r2d_map`, `CairoImage`), for editor2d; build option `R2D_BUILD_PROGRAMS` | done |
 | 3f | Querying the map: FIDs, the same rules for drawing and querying, exact hit tests, `Map::queryAt`, `--at` | done |
 | 3g | Querying a zone: segment crossing, the three cases of `intersects`, a cap, `Map::queryArea`, `--box`, `--area` | done |
@@ -494,9 +495,14 @@ between apostrophes (`'21006'`, `'Clos de l''Oasis'`).
 ```
 
 Shapes: `circle`, `square`, `triangle`, `star`, `cross`, `x`, and for hatching
-`shape://slash`, `backslash`, `horline`, `vertline`, `times`, `dot`. Only PNG
-images for now (SVG later). A missing image is reported and the next symbol,
-usually a mark, is drawn instead.
+`shape://slash`, `backslash`, `horline`, `vertline`, `times`, `dot`. Images
+are PNG or SVG (`format: image/svg+xml`, or just a `.svg` url). An SVG is read
+by [nanosvg](https://github.com/memononen/nanosvg) (one header in
+`third_party/`, no DLL) and drawn as paths: sharp at any size, vector in a PDF.
+It must be an icon-like SVG: shapes, colours, strokes; text converted to paths,
+no filters or masks; gradients are drawn as one colour. A missing or unreadable
+image is reported and the next symbol, usually a mark, is drawn instead.
+`styles/topo-points-svg.yaml` uses the SVG icons of `styles/icons/`.
 
 #### Labels (step 3c)
 

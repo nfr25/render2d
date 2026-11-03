@@ -79,6 +79,10 @@ top="$(cd "$root/.." && pwd)"
 # folder. PACKAGES.txt lists the packages and their versions.
 mkdir -p "$out/licenses"
 : > "$out/licenses/PACKAGES.txt"
+# Code compiled into render2d.exe (not a DLL): nanosvg, zlib licence (§75).
+mkdir -p "$out/licenses/nanosvg"
+awk '{ print } /\*\// { exit }' third_party/nanosvg/nanosvg.h > "$out/licenses/nanosvg/LICENSE.txt"   # its first comment
+echo "nanosvg (compiled in, third_party/nanosvg, zlib licence)" >> "$out/licenses/PACKAGES.txt"
 declare -A seen=()
 for dll in "${dlls[@]}"; do
     pkg=$(pacman -Qqo "$dll" 2>/dev/null || true)

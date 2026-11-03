@@ -13,6 +13,18 @@
 namespace r2d {
 
 namespace {
+// §75: "tree.svg", ".SVG" (the same test as render/svg_symbol, which the
+// style library cannot depend on).
+bool isSvgFile(const std::string& path) {
+    if (path.size() < 4) return false;
+    std::string ext = path.substr(path.size() - 4);
+    for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return ext == ".svg";
+}
+} // namespace
+
+
+namespace {
 
 // Walks the YAML tree, builds the Style, collects warnings.
 class Reader {
@@ -287,9 +299,15 @@ private:
                         const YAML::Node e = sym["external"] ? sym["external"] : sym["external-graphic"];
                         if (haveMark || !pt.image.empty()) { warn(sym, "an image after the first symbol is never used (ignored)"); continue; }
                         const std::string url = e["url"] ? e["url"].as<std::string>("") : "";
-                        const std::string format = e["format"] ? e["format"].as<std::string>("image/png") : "image/png";
-                        if (format != "image/png") {
-                            warn(sym, "only PNG images (image/png) are supported yet: '" + format + "' ignored");
+                        // §75: PNG or SVG; without a format, the file's extension says which.
+                        const bool svgUrl = isSvgFile(url);
+                        const std::string format = e["format"] ? e["format"].as<std::string>("")
+                                                 : (svgUrl ? "image/svg+xml" : "image/png");
+                        if (format != "image/png" && format != "image/svg+xml") {
+                            warn(sym, "only PNG (image/png) and SVG (image/svg+xml) images are supported: '" + format + "' ignored");
+                        } else if ((format == "image/svg+xml") != svgUrl) {
+                            warn(sym, format == "image/svg+xml" ? "an SVG image's file ends in .svg: '" + url + "' ignored"
+                                                                : "'" + url + "' is an SVG: its format is image/svg+xml (ignored)");
                         } else if (url.empty()) {
                             warn(sym, "'external' needs a 'url'");
                         } else if (!std::filesystem::exists(resolve(url))) {

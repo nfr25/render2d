@@ -177,8 +177,10 @@ th{background:var(--code)}
   <a href="#warp">72. Rasters in another system, warped on the fly</a>
   <a href="#web">73. Web basemaps: the design</a>
   <a href="#print">74. Printing: a page at an exact scale</a>
-  <a href="#refs">75. References</a>
-  <a href="#road">76. Roadmap</a>
+  <strong style="margin-top:8px">Symbols, again</strong>
+  <a href="#svg">75. SVG symbols, with nanosvg</a>
+  <a href="#refs">76. References</a>
+  <a href="#road">77. Roadmap</a>
 </nav>
 
 <!-- ============================================================== -->
@@ -1426,7 +1428,7 @@ styles/                 adresses-numeros.yaml</pre>
     <li><strong>Transparency.</strong> A PNG has an alpha channel (the softened edge of a pictogram). Cairo converts it on reading into "premultiplied" alpha, the form it uses to blend colours: nothing to do on our side.</li>
     <li><strong>Blur.</strong> A 16 × 16 pixel icon displayed at 16 pixels is sharp. Displayed at 24 pixels, on a 150 % screen, it is enlarged and becomes blurred. The classic remedy: provide the icon at 32 × 32 and display it at 16; it stays sharp up to a pixel ratio of 2. Exactly what SVG will later make unnecessary.</li>
   </ul>
-  <p>In PDF and SVG, Cairo embeds the image as is: a raster image in a vector document. One more argument for SVG one day.</p>
+  <p>In PDF and SVG, Cairo embeds the image as is: a raster image in a vector document. One more argument for SVG: done in step 3d-2, <a href="#svg">§75</a>.</p>
 </section>
 
 <!-- ============================================================== -->
@@ -2489,7 +2491,7 @@ PG:host=db.example.org dbname=gis user=gisuser::urbis.buildings      (another sc
     <li>A password typed this session for this connection (above).</li>
     <li>The <code>PGPASSWORD</code> variable of render2d's own environment.</li>
     <li>The password file: <code>PGPASSFILE</code>, else <code>%APPDATA%\postgresql\pgpass.conf</code> on Windows (<code>~/.pgpass</code> elsewhere). Its first line <code>host:port:database:user:password</code> matching <strong>dbserver : 5432 : gis_data : reader</strong>, <code>*</code> matching anything, <code>\:</code> a colon in a password. The port not written in the string is 5432, as for libpq; the user not written is the Windows user.</li>
-    <li>Nothing found: GDAL's message is followed by where render2d looked, for instance "(no password: typed none this session; PGPASSWORD: not set; C:\Users\…\AppData\Roaming\postgresql\pgpass.conf: no line for dbserver:5432:gis_data:nfr)". The usual culprits then show at once: a line written for another host name ("localhost", "server") or port, or Notepad's <code>pgpass.conf.txt</code>.</li>
+    <li>Nothing found: GDAL's message is followed by where render2d looked, for instance "(no password: typed none this session; PGPASSWORD: not set; C:\Users\…\AppData\Roaming\postgresql\pgpass.conf: no line for dbserver:5432:gis_data:reader)". The usual culprits then show at once: a line written for another host name ("localhost", "server") or port, or Notepad's <code>pgpass.conf.txt</code>.</li>
   </ol></div>
   <p class="muted">The same day: a source written <code>PG:…connect_timeout=5::::municipalities</code> (the separator doubled) is read as <code>PG:…connect_timeout=5</code> and the table <code>municipalities</code> (<code>splitSource</code>): a connection string never ends with a colon.</p>
 
@@ -3392,8 +3394,78 @@ bash:  find /c/temp/wmscache -type f | wc -l</pre>
 </section>
 
 <!-- ============================================================== -->
+<section id="svg">
+  <h2>75. SVG symbols, with nanosvg <span class="tag">step 3d-2, 0.5.3</span></h2>
+  <p>A PNG pictogram (§42) is a grid of pixels: sharp at the size it was drawn, blocky when enlarged, and a raster image inside a PDF that is otherwise all vector. An <strong>SVG</strong> is the pictogram's drawing itself: a few shapes, their colours and their outlines, which can be drawn at any size. On paper, where a 16-pixel tree must look like a drawing and not like a mosaic, it makes the difference.</p>
+  <p>The style does not change, only the file and its format:</p>
+  <pre>- point:
+    size: 16
+    symbols:
+    - external: {url: icons/arbre.svg, format: image/svg+xml}
+    - mark: {shape: circle, fill-color: '#2F7D4F'}      # if the SVG cannot be read</pre>
+  <p>Without <code>format</code>, the extension decides: <code>.svg</code> is an SVG, anything else a PNG. A format that contradicts the extension (an <code>.svg</code> said to be <code>image/png</code>) is refused with a warning, and the next symbol is drawn: SLD's rule, as for a missing PNG. <code>styles/topo-points-svg.yaml</code> is <code>topo-points.yaml</code> with the three icons (tree, bus stop, arrow) redrawn as SVG in <code>styles/icons/</code>.</p>
+
+  <h3>Why not librsvg</h3>
+  <p>The usual way to draw an SVG with Cairo is <strong>librsvg</strong>, GNOME's library: it reads the whole of SVG (text, filters, masks, CSS) and draws it on a Cairo context. Its price on Windows is what you saw when you tried it: librsvg pulls GLib, GIO, Pango, HarfBuzz, libxml2 and their own dependencies, a long list of DLLs beside <code>render2d.exe</code>, for pictograms of a few shapes each.</p>
+  <p><strong>nanosvg</strong> (Mikko Mononen, zlib licence) is the opposite choice: <strong>one header file</strong> of about 3 000 lines, in <code>third_party/nanosvg/</code>, compiled into render2d. No library to install, no DLL, nothing to add to the Windows package. It reads the SVG of icons, and only that:</p>
+  <div class="scroll">
+  <table>
+    <tr><th>Read</th><th>Not read</th></tr>
+    <tr><td><code>path</code>, <code>rect</code> (with rounded corners), <code>circle</code>, <code>ellipse</code>, <code>line</code>, <code>polyline</code>, <code>polygon</code>, groups <code>g</code>, <code>transform</code></td><td><code>text</code>: convert letters to paths in the drawing program (Inkscape: Path ▸ Object to Path)</td></tr>
+    <tr><td>fill and stroke colours, <code>opacity</code>, <code>fill-opacity</code>, <code>stroke-opacity</code>, <code>fill-rule</code>, width, caps, joins, dashes</td><td>filters (blur, shadow), masks, <code>clipPath</code>, <code>use</code>, embedded images</td></tr>
+    <tr><td><code>style="..."</code> attributes and simple CSS classes (<code>.leaf {fill:#2F7D4F}</code>)</td><td>complex CSS selectors</td></tr>
+    <tr><td>linear and radial gradients (read; drawn by us as one colour, below)</td><td>animation, scripts</td></tr>
+  </table>
+  </div>
+  <p>That is the set of a pictogram. A file from an icon collection (Maki, the Noun Project, OSM's map icons) usually is just that; an illustration with text and shadows is not a symbol.</p>
+
+  <h3>What nanosvg gives: shapes made of cubic Béziers</h3>
+  <p>nanosvg does not draw. It reads the file and gives back a list of <strong>shapes</strong>, each with its fill, its stroke and its <strong>paths</strong>, and every path, whatever it was in the file (a circle, a rectangle, an arc, a quadratic curve), turned into a chain of <strong>cubic Bézier curves</strong> (§33). A path is a list of points: the start, then three points per curve, two control points and the end. A straight segment is a curve whose control points lie on it.</p>
+  <p>Which is exactly what our canvas draws (§10): <code>moveTo</code> for the start, <code>curveTo</code> for each triple, <code>closePath</code> if the path is closed, then <code>fill</code> and <code>stroke</code>. No intermediate image: the SVG becomes paths on our canvas, so in a PDF it stays vector, and the legend (§74), which draws its swatches with the same function as the map, shows it the same way.</p>
+
+  <h3>Size and place: one matrix, as for the PNG</h3>
+  <div class="calc"><strong>The bus stop of <code>topo-points-svg.yaml</code>, worked out</strong><ol>
+    <li><code>bus.svg</code> says <code>width="32" height="32" viewBox="0 0 32 32"</code>: a square of 32 units. nanosvg gives its size in pixels at 96 dpi, the units of a screen as a browser reads them: 32 × 32 px. (A drawing given in millimetres, <code>width="10mm"</code>, would be 10 ÷ 25.4 × 96 = 37.8 px: only the proportions matter, since the style fixes the height.)</li>
+    <li>The style asks <code>size: 14</code>: the symbol is 14 pixels high. Scale k = 14 ÷ 32 = <strong>0.4375</strong>; the width follows, 32 × 0.4375 = 14 px.</li>
+    <li>Centring: the SVG's point (16, 16), its middle, must fall on the feature. The matrix is the PNG's (§42): move by (−16, −16), scale by k, turn by the rotation, move to the point on the image. Each point of each curve goes through it.</li>
+    <li>The strokes: the SVG's stroke widths are in its units, so they are multiplied by k too. The arrow of <code>fleche.svg</code> (stroke 2 units, <code>size: 12</code>): k = 12 ÷ 32 = 0.375, a stroke of 2 × 0.375 = <strong>0.75 px</strong>. Same for the dashes.</li>
+    <li>On paper (§74): the pixel ratio 0.7937 makes the 14 px of the bus stop 14 × 0.7937 = 11.1 points = 11.1 × 0.3528 = <strong>3.9 mm</strong> on the sheet, and the arrow's stroke 0.75 px = 0.75 × 0.28 = <strong>0.21 mm</strong>. Sharp at that size, as at any other.</li>
+  </ol></div>
+  <p>Without <code>size</code>, the SVG keeps its own size: 32 × 32 px for these icons.</p>
+
+  <h3>Colours, fill then stroke</h3>
+  <ul>
+    <li><strong>Colours.</strong> nanosvg packs a colour in a 32-bit number as <code>0xAABBGGRR</code> (red in the low byte, the reverse of the usual <code>#RRGGBB</code>): unpacked byte by byte, each divided by 255. The shape's <code>opacity</code> multiplies the alpha. The tree's highlight, <code>fill="#FFFFFF" fill-opacity="0.25"</code>, is white at a quarter: a lighter green where it lies on the crown.</li>
+    <li><strong>The order.</strong> SVG fills first, then strokes on top: the outline is fully visible, half of it over the fill. SVG 2's <code>paint-order: stroke</code> asks for the reverse (the outline half hidden under the fill, used for text halos): read and followed. The path is built once and kept for the second operation (<code>PathMode::Keep</code>, §10).</li>
+    <li><strong>The fill rule.</strong> <code>fill-rule="evenodd"</code> or <code>nonzero</code> (§11), passed as is. The bus stop's "B" relies on it: one path, the letter's outline and its two holes; with <code>evenodd</code>, the holes stay empty whatever their direction.</li>
+    <li><strong>Gradients.</strong> Our canvas does not have them yet. A gradient is drawn as the <strong>mean of its stops</strong>: red to blue gives (128, 0, 128), a purple. On a pictogram, where a gradient is a subtle shading, that is close enough; the test checks the mean. Real gradients would be a canvas function to add (Cairo has them), if a symbol ever needs one.</li>
+    <li><strong>Hidden shapes</strong> (<code>display="none"</code>) are skipped, as are shapes without fill and without stroke.</li>
+  </ul>
+
+  <h3>Read once, kept, shared</h3>
+  <p>A file is parsed the first time it is drawn and kept for the whole program, by path: a map with 2 000 trees parses <code>arbre.svg</code> once. The parsed image is only read afterwards. editor2d draws in two threads (the render and the queries), so the cache is behind a lock; once read, the images are shared without one.</p>
+  <p>A file that cannot be read (not found, not SVG, without a size) is remembered too: the error is given once, in the report's <code>errors</code>, and the point is drawn with the next symbol, the mark. One consequence: an SVG edited while editor2d is open is not read again until editor2d restarts. Reading the file's date at each draw would cost little; left for when it is needed.</p>
+  <p>nanosvg reads numbers with its own function, not <code>strtod</code>: on a Windows set to Belgian French, where the decimal separator is a comma, <code>strtod("2.5")</code> could read 2. The SVG's <code>2.5</code> stays 2.5.</p>
+
+  <h3>Third-party code in render2d</h3>
+  <ul>
+    <li><code>third_party/nanosvg/nanosvg.h</code>, unchanged, with a README that gives its origin and its commit (<code>239e102</code>). To update it: replace the file, run the tests.</li>
+    <li>The implementation is compiled once, in <code>src/render/svg_symbol.cpp</code> (<code>#define NANOSVG_IMPLEMENTATION</code> before the include). No other file sees nanosvg.</li>
+    <li>CMake includes it as a <strong>system</strong> header (<code>target_include_directories(... SYSTEM ...)</code>): our strict warnings (<code>-Wshadow</code>, <code>-Wconversion</code>...) apply to our code, not to someone else's.</li>
+    <li>Licences: zlib (nanosvg) inside AGPL (render2d): compatible, the zlib licence asks only that its notice stays in the file.</li>
+  </ul>
+
+  <h3>The code and the tests</h3>
+  <ul>
+    <li><code>render/svg_symbol.hpp</code>: <code>isSvgFile</code>, <code>svgSize</code>, <code>drawSvg(canvas, path, placement, scale, error)</code>. In <code>symbolize.cpp</code>, the SVG branch comes before the PNG's, with the same placement matrix. The YSLD reader accepts <code>image/svg+xml</code>; the writer writes the format from the extension, so the round trip (§59) keeps it.</li>
+    <li><code>test_render</code>: a 20 × 20 SVG (red left half, blue right half, a green ring of radius 4, stroke 2) drawn 40 px high, so 2 px per unit: red at 15 px left of the point, blue at 15 px right, green at 8 px (the ring, 4 px wide); turned by 90°, the halves above and below; a red-to-blue gradient read as (128, 0, 128); a file that is not SVG, drawn twice: the black circle and one error only.</li>
+    <li><code>test_style</code>: the format given, the format from the extension, an SVG said to be PNG and a GIF refused with their warnings. <code>test_ysld_writer</code>: <code>topo-points-svg.yaml</code> in the round trip.</li>
+  </ul>
+</section>
+
+<!-- ============================================================== -->
 <section id="refs">
-  <h2>75. References</h2>
+  <h2>76. References</h2>
   <h3>Books</h3>
   <ul class="refs">
     <li><strong>Adobe Systems, <em>PostScript Language Reference Manual</em></strong> (the "red book"), 3<sup>rd</sup> ed., 1999. The origin of the path / fill / stroke model, of the even-odd and non-zero rules, of <code>gsave</code>/<code>grestore</code>. Chapters 10 and 11.</li>
@@ -3436,6 +3508,8 @@ bash:  find /c/temp/wmscache -type f | wc -l</pre>
     <li><strong>EPSG Geodetic Parameter Dataset</strong> — epsg.org. EPSG:31370, 4326, 3857, the transformations "BD72 to WGS 84 (1) to (3)" and their accuracies. Chapter 69.</li>
     <li><strong>PROJ, documentation</strong> — proj.org: <code>cs2cs</code>, <code>projinfo</code>, how an operation is chosen, grids and the network. Chapters 69 and 70.</li>
     <li><strong>GDAL, RFC 73 "Integration of PROJ6 for WKT2, late binding capabilities, time-dependent coordinates, and improved CRS-awareness"</strong> — gdal.org. The axis order since GDAL 3 and <code>OAMS_TRADITIONAL_GIS_ORDER</code>. Chapter 69.</li>
+    <li><strong>W3C, <em>Scalable Vector Graphics (SVG) 1.1 (Second Edition)</em></strong>, 2011 — w3.org/TR/SVG11. Chapter 8 (paths: the commands and their curves), chapter 7 (<code>viewBox</code>, units), chapter 11 (painting: <code>fill-rule</code>, <code>stroke-linejoin</code>, <code>paint-order</code> is SVG 2). Chapter 75.</li>
+    <li><strong>Mikko Mononen, nanosvg</strong> — github.com/memononen/nanosvg. The parser we embed (zlib licence), its README and its example rasteriser. Chapter 75.</li>
     <li><strong>GDAL, <code>OGRCoordinateTransformation</code>, <code>OCTTransformBounds</code>, the warper (<code>GDALWarp</code>) and the WMS driver (TMS mode)</strong> — gdal.org. Chapters 70 and 71.</li>
     <li><strong>OpenStreetMap Foundation, Tile Usage Policy</strong> — operations.osmfoundation.org/policies/tiles. And Geofabrik's extracts, download.geofabrik.de. Chapter 71.</li>
   </ul>
@@ -3443,13 +3517,13 @@ bash:  find /c/temp/wmscache -type f | wc -l</pre>
 
 <!-- ============================================================== -->
 <section id="road">
-  <h2>76. Roadmap</h2>
+  <h2>77. Roadmap</h2>
   <ol class="road">
     <li>Step 1 — Matrix, canvas, Cairo surface: test shapes in PNG, SVG and PDF. ✓</li>
     <li>Step 2 — GDAL/OGR reading: drawing a real layer with a fixed style. ✓</li>
     <li>Step 3 — Styles: the reduced SLD model, written in YSLD. 3a: symbolizers and scale ranges ✓; 3b: attributes and filters ✓.</li>
     <li>Step 3c — Labels: the <code>text</code> symbolizer (<code>label: ${POLICENUM}</code>), the font, the halo, arithmetic in expressions, rotation from <code>CARTOANGLE</code>, the pixel ratio of high-density screens ✓.</li>
-    <li>Step 3d — Symbols: the well-known shapes, rotation and size by attribute (proportional symbols, unit of measure), PNG images, hatching anchored to the ground ✓. Later: SVG with librsvg.</li>
+    <li>Step 3d — Symbols: the well-known shapes, rotation and size by attribute (proportional symbols, unit of measure), PNG images, hatching anchored to the ground ✓. SVG images: with nanosvg rather than librsvg, 0.5.3 (§75) ✓.</li>
     <li>Step 3e — The map as a library: <code>r2d_map</code> (open layers, styles read once, shared report), <code>CairoImage</code> (a surface in memory), programs only when render2d is the main project. No rendering change, proven by a characterisation test. First client: <code>editor2d</code>. ✓</li>
     <li>Step 3f — Querying the map: the FID, the same rule code to draw and to query (<code>RuleMatcher</code>), the exact point / line / polygon test, <code>Map::queryAt</code> and <code>--at</code>. First client: editor2d's selection. ✓</li>
     <li>Step 3g — Querying an area: <code>orient</code> and segment crossing, the three cases (vertex inside, crossing edges, area inside the feature), the cap, <code>Map::queryArea</code>, <code>--box</code> and <code>--area</code>. Client: editor2d's rectangle and polygon tools. ✓</li>
@@ -3463,6 +3537,7 @@ bash:  find /c/temp/wmscache -type f | wc -l</pre>
     <li>Step 3o ✓ — Selecting by attributes (§64): <code>Map::queryWhere</code>, <code>GdalLayer::forFids</code>, <code>--where</code>. Client: editor2d's selection by expression (4a).</li>
     <li>Step 4a ✓ — Rasters (§65, §66): reading the view's window with its overviews, bands into ARGB32, transparent nodata, the <code>raster</code> symbolizer and its opacity. Same coordinate system as the map. Client: editor2d's raster layers.</li>
     <li>Step 5 — Printing (§74): a page at an exact scale, in PDF: the sheet, the frame, the title, the scale bar on the ground, the north arrow by PROJ, the attributions, a simple legend; <code>--page</code> and <code>print:</code>. Chosen on 2 November before the labels, for carto2D 1.0. 5a (0.5.0, 3 November) ✓ the page; 5b (0.5.1) ✓ the legend; 5c (0.5.2, editor2d 0.6.6) ✓ editor2d's Print. Step closed on 3 November.</li>
+    <li>Step 3d-2 — SVG symbols (§75, 0.5.3, 3 November) ✓: nanosvg, one header, no DLL; the SVG read once and drawn as paths by our canvas, vector in a PDF, the same in the legend.</li>
     <li>Step 4c — Web basemaps (§73): OpenStreetMap's tiles, the Region's WMTS and WMS, through GDAL's drivers. 4c-1 (0.4.9) ✓ the User-Agent, the cache, the clip to the map's area of use, the extent, the report, <code>basemaps/</code>. 4c-2 (0.4.10) ✓ the attributions, <code>--no-attribution</code> for tiles, no OSM pyramid. Phase closed on 2 November.</li>
     <li>Step 4b — On-the-fly reprojection (PROJ), §69 to §71: 4b-1 (0.4.5) ✓ vectors, <code>--crs</code>, <code>crs:</code> of the map and of a layer, the conversion per layer, the catalogue for editor2d; tested on OpenStreetMap against UrbIS. 4b-2 (0.4.8) ✓ rasters warped on the fly (§72). OpenStreetMap's tiles: step 4c, with the other web basemaps.</li>
     <li>Later, after reprojection and PostGIS, once editor2d and viewer2d are rich enough: <strong>render2d as a server</strong>, a program that stays up with its map open and answers over HTTP (<code>/map</code>, <code>/tiles/z/x/y</code>, <code>/query</code>, <code>/legend</code>, a style changed live) and as a <strong>standard WMS</strong>, readable by QGIS and any GIS client. The favoured option: <code>render2d --serve</code>, a process that stays up with its map open and talks through a pipe (stdin/stdout), one JSON line per request and per answer, the image as bytes right after, with the vocabulary of editor2d's commands (<code>map.render</code>, <code>layer.add</code>…). In front of it, FastAPI (or viewer2d) keeps a small pool of these processes: a GDAL crash kills only one, they draw in parallel. The other paths stay open: an HTTP server in C++ inside render2d, or render2d as a Python module (pybind11) if every millisecond counts. Then, real time: telling the server an area has changed, redrawing, invalidating the tiles.</li>

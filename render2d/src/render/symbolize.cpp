@@ -8,6 +8,7 @@
 #include <cstdint>
 
 #include "canvas/shapes.hpp"
+#include "render/svg_symbol.hpp"
 
 namespace r2d {
 
@@ -162,7 +163,20 @@ void drawSymbolizer(Canvas& cv, const Affine& m, const Geometry& g, const Symbol
             if (!(size >= 0.0)) return;
 
             // §42: the image first; when it cannot be read, the mark.
-            if (!s.image.empty()) {
+            // §75: an SVG is drawn as paths, at `size` pixels high.
+            if (!s.image.empty() && isSvgFile(s.image)) {
+                std::string error;
+                if (const auto svg = svgSize(s.image, error)) {
+                    const double k = size > 0.0 ? size / svg->height : 1.0;
+                    for (const Point& p : g.points)
+                        if (!drawSvg(cv, s.image, place(m.apply(p), ctx.rotation, k, k) *
+                                                  Affine::translation(-svg->width / 2.0, -svg->height / 2.0), k, error))
+                            break;
+                    return;
+                }
+                if (ctx.errors && std::find(ctx.errors->begin(), ctx.errors->end(), error) == ctx.errors->end())
+                    ctx.errors->push_back(error);
+            } else if (!s.image.empty()) {
                 std::string error;
                 const int handle = cv.loadImage(s.image, error);
                 if (handle >= 0) {
