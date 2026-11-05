@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <cmath>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -17,6 +18,7 @@
 #include "core/view.hpp"
 #include "render/labels.hpp"
 #include "render/render_layer.hpp"
+#include "render/svg_symbol.hpp"
 #include "render/symbolize.hpp"
 
 using namespace r2d;
@@ -566,6 +568,31 @@ void testSvg() {
     std::filesystem::remove(bad);
 }
 
+// §76: every symbol the library ships is an SVG render2d reads, 20 x 20.
+// Not user/: the user's own symbols are of any size, and none of ours.
+void testLibrary() {
+    namespace fs = std::filesystem;
+    int n = 0, bad = 0;
+    const fs::path library = fs::path(R2D_SOURCE_DIR) / "symbols";
+    for (auto it = fs::recursive_directory_iterator(library); it != fs::recursive_directory_iterator(); ++it) {
+        const fs::directory_entry& e = *it;
+        if (e.is_directory() && e.path().filename() == "user" && e.path().parent_path() == library) {
+            it.disable_recursion_pending();
+            continue;
+        }
+        if (e.path().extension() != ".svg") continue;
+        ++n;
+        std::string error;
+        const auto size = svgSize(e.path().string(), error);
+        if (!size || size->width != 20.0 || size->height != 20.0) {
+            ++bad;
+            std::printf("  not a 20 x 20 symbol: %s %s\n", e.path().string().c_str(), error.c_str());
+        }
+    }
+    CHECK(n >= 80);
+    CHECK(bad == 0);
+}
+
 // §43: hatching anchored to the world: two images side by side give exactly
 // the pixels of one image twice as wide, even with a 10-pixel tile.
 void testHatchSeam() {
@@ -618,6 +645,7 @@ int main() {
     testSymbolSizes();
     testImage();
     testSvg();
+    testLibrary();
     testHatchSeam();
     return check::summary();
 }

@@ -29,4 +29,8 @@ CrsInfo crsInfo(const OGRSpatialReference* srs);
 // or PROJ_DATA). For a PROJ context created outside GDAL (§70).
 const std::string& projDataFolder();
 
+// The folder of the running executable, or "" when unknown (§76: the
+// symbol library beside render2d.exe).
+std::string programFolder();
+
 } // namespace r2d

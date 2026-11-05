@@ -124,6 +124,12 @@ std::filesystem::path executableFolder() {
 #endif
 }
 
+} // namespace
+
+std::string programFolder() { return executableFolder().string(); }
+
+namespace {
+
 // A path as UTF-8 text, the form GDAL and PROJ expect on every system.
 std::string utf8(const std::filesystem::path& p) {
     const std::u8string u = p.u8string();

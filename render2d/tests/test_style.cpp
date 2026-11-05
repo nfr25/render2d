@@ -8,7 +8,9 @@
 #include <variant>
 
 #include "check.hpp"
+#include "style/symbol_folders.hpp"
 #include "style/ysld_reader.hpp"
+#include "style/ysld_writer.hpp"
 
 using namespace r2d;
 
@@ -302,6 +304,75 @@ rules:
 
 } // namespace
 
+// §76: symbol libraries. A style in styles/ names park.svg (in the user's
+// library), nature/tree.svg (in carto2D's), icons/bus.svg (beside it), and
+// bus.svg which is in both the style's folder and a library: the style's wins.
+void testSymbolFolders() {
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / "r2d_symbol_folders";
+    fs::remove_all(root);
+    const fs::path styles = root / "styles", mine = root / "mine", shipped = root / "shipped";
+    fs::create_directories(styles / "icons");
+    fs::create_directories(mine);
+    fs::create_directories(shipped / "nature");
+    const char* svg = "<svg width='4' height='4'/>";
+    std::ofstream(mine / "park.svg") << svg;
+    std::ofstream(shipped / "nature" / "tree.svg") << svg;
+    std::ofstream(styles / "icons" / "bus.svg") << svg;
+    std::ofstream(styles / "bus.svg") << svg;
+    std::ofstream(mine / "bus.svg") << svg;
+    setSymbolFolders({mine.string(), shipped.string()});
+
+    const std::string dir = styles.string();
+    auto same = [](const std::string& a, const fs::path& b) { return fs::path(a).lexically_normal() == b.lexically_normal(); };
+    CHECK(same(findSymbol("park.svg", dir), mine / "park.svg"));                    // the user's library
+    CHECK(same(findSymbol("nature/tree.svg", dir), shipped / "nature" / "tree.svg")); // carto2D's, a sub-folder
+    CHECK(same(findSymbol("icons/bus.svg", dir), styles / "icons" / "bus.svg"));    // beside the style
+    CHECK(same(findSymbol("bus.svg", dir), styles / "bus.svg"));                    // the style's folder first
+    CHECK(findSymbol("nothere.svg", dir).empty());
+    CHECK(same(findSymbol((mine / "park.svg").string(), dir), mine / "park.svg"));  // absolute: itself
+
+    // Written back: relative to the style, else to the library, else whole.
+    CHECK(symbolUrl((styles / "icons" / "bus.svg").string(), dir) == "icons/bus.svg");
+    CHECK(symbolUrl((mine / "park.svg").string(), dir) == "park.svg");
+    CHECK(symbolUrl((shipped / "nature" / "tree.svg").string(), dir) == "nature/tree.svg");
+    CHECK(symbolUrl((root / "elsewhere.svg").string(), dir) == (root / "elsewhere.svg").generic_string());
+
+    // Through the reader and the writer: the names stay names.
+    const YsldResult r = parseYsld(R"(
+rules:
+- symbolizers:
+  - point: {symbols: [external: {url: park.svg}]}
+  - point: {symbols: [external: {url: nature/tree.svg}]}
+  - point: {symbols: [external: {url: gone.svg}, mark: {shape: circle}]}
+)", dir);
+    CHECK(r.style.has_value());
+    if (r.style) {
+        const auto& v = r.style->featureStyles[0].rules[0].symbolizers;
+        CHECK(v.size() == 3);
+        if (v.size() == 3) {
+            CHECK(same(std::get<PointSymbolizer>(v[0]).image, mine / "park.svg"));
+            CHECK(std::get<PointSymbolizer>(v[2]).image.empty());
+        }
+        const std::string text = writeYsld(*r.style, dir);
+        CHECK(text.find("url: 'park.svg'") != std::string::npos || text.find("url: park.svg") != std::string::npos);
+        CHECK(text.find("nature/tree.svg") != std::string::npos && text.find(shipped.generic_string()) == std::string::npos);
+    }
+    CHECK(hasWarning(r, "gone.svg"));
+    CHECK(hasWarning(r, (mine / "gone.svg").lexically_normal().string()));   // says where it looked
+
+    // R2D_SYMBOLS, as PATH.
+#ifdef _WIN32
+    const std::vector<std::string> list = splitFolderList("C:/a;D:/b c;;");
+    CHECK(list.size() == 2 && list[0] == "C:/a" && list[1] == "D:/b c");
+#else
+    const std::vector<std::string> list = splitFolderList("/a:/b c::");
+    CHECK(list.size() == 2 && list[0] == "/a" && list[1] == "/b c");
+#endif
+    setSymbolFolders({});
+    fs::remove_all(root);
+}
+
 int main() {
     testBuildings();
     testScaleChoice();
@@ -311,5 +382,6 @@ int main() {
     testFilters();
     testText();
     testSymbols();
+    testSymbolFolders();
     return check::summary();
 }

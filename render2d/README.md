@@ -125,6 +125,7 @@ render2d SOURCE [SOURCE ...] [options]
 
 | Argument | Meaning |
 |---|---|
+| `--symbols DIR` | A symbol library (§76): an image a style names without its folder (`park.svg`) is looked for there, after the style's own folder. Repeatable; then `R2D_SYMBOLS`, then `symbols/` beside render2d. |
 | `--config FILE.yaml` | The layers (`source`, `style`, `visible`) and `start: bbox` of a viewer.yaml, such as viewer2d's. Relative paths are taken from the file's folder. viewer2d's own keys are ignored; any other key gives a warning (a typo, often). `SOURCE`s given as well are drawn on top; `--bbox` replaces `start: bbox`. The report starts with the file and every path it resolved. |
 | `SOURCE` | A file or a GDAL connection string: a vector layer, or a raster (GeoTIFF...; step 4a). `SOURCE::layer` picks a layer, otherwise the first one is used. Layers are drawn in the order given, the first at the bottom. |
 | `--style FILE.yaml` | YSLD style for the `SOURCE` just before it. Without it, a built-in style chosen from the geometry type. |
@@ -503,6 +504,18 @@ It must be an icon-like SVG: shapes, colours, strokes; text converted to paths,
 no filters or masks; gradients are drawn as one colour. A missing or unreadable
 image is reported and the next symbol, usually a mark, is drawn instead.
 `styles/topo-points-svg.yaml` uses the SVG icons of `styles/icons/`.
+
+A url without a folder (`park.svg`, `nature/park.svg`) is looked for in the
+style's folder first, then in the **symbol libraries**: `--symbols DIR`
+(repeatable), then the folders of `R2D_SYMBOLS` (separated as in `PATH`), then
+`symbols/` beside render2d (the library shipped with it; your own symbols go in
+`symbols/user/`, which an update never touches). It ships 84 symbols in 8
+families (`nature/tree.svg`, `transport/bus-stop.svg`, `health/pharmacy.svg`...),
+white glyphs from Maki and Temaki (CC0) on a disc of the family's colour, made
+by `tools/make-symbols.py`; `symbols/SOURCES.txt` lists them. carto2D, installed beside
+render2d, uses the same library. A style saved by editor2d keeps the name, not
+the library's path. The symbols are part of a map's data: to send a map
+elsewhere, package them with it.
 
 #### Labels (step 3c)
 

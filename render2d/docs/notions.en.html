@@ -179,8 +179,9 @@ th{background:var(--code)}
   <a href="#print">74. Printing: a page at an exact scale</a>
   <strong style="margin-top:8px">Symbols, again</strong>
   <a href="#svg">75. SVG symbols, with nanosvg</a>
-  <a href="#refs">76. References</a>
-  <a href="#road">77. Roadmap</a>
+  <a href="#symlib">76. Symbol libraries</a>
+  <a href="#refs">77. References</a>
+  <a href="#road">78. Roadmap</a>
 </nav>
 
 <!-- ============================================================== -->
@@ -3464,8 +3465,60 @@ bash:  find /c/temp/wmscache -type f | wc -l</pre>
 </section>
 
 <!-- ============================================================== -->
+<section id="symlib">
+  <h2>76. Symbol libraries <span class="tag">step 3d-3, 0.5.4</span></h2>
+  <p>Until 0.5.3 an image's path was relative to the style file (§42): <code>icons/arbre.svg</code> beside <code>topo.yaml</code>. Fine for one map; with ten maps, ten copies of the same tree. Decided on 3 November, with editor2d's legend dialog: a cartographer builds <strong>a library</strong> of symbols once and uses it on every map. As QGIS's "SVG paths": the style names the symbol, the program knows where its libraries are.</p>
+  <pre>- external: {url: park.svg}              # a library's (or beside the style)
+- external: {url: nature/park.svg}       # a library's sub-folder
+- external: {url: icons/arbre.svg}       # beside the style, as before</pre>
+
+  <h3>Where a name is looked for</h3>
+  <ol>
+    <li>An absolute path: itself.</li>
+    <li><strong>The style's folder first</strong>, as before: nothing that worked changes, and a map can override a library's symbol with its own file of the same name.</li>
+    <li>Then each library, in order: <code>--symbols DIR</code> (repeatable), the folders of <code>R2D_SYMBOLS</code> (separated as in <code>PATH</code>: <code>;</code> on Windows, where <code>C:</code> holds a colon; <code>:</code> elsewhere), then <code>symbols/</code> beside render2d (one folder up when run from <code>build/</code>: the repository's <code>symbols/</code>).</li>
+    <li>Found nowhere: the warning says every place looked in, and the next symbol (the mark) is drawn.</li>
+  </ol>
+  <div class="calc"><strong>Worked out: <code>url: park.svg</code> in <code>C:/data/render/styles/parcs.yaml</code></strong><ol>
+    <li><code>C:/data/render/styles/park.svg</code>: no such file.</li>
+    <li><code>render2d ... --symbols D:/pictos</code>: <code>D:/pictos/park.svg</code>: found. That one is drawn.</li>
+    <li>Without <code>--symbols</code>, nor <code>R2D_SYMBOLS</code>, nor <code>symbols/park.svg</code> beside <code>render2d.exe</code>: "image not found: C:\data\render\styles\park.svg, C:\...\render2d\symbols\park.svg (the next symbol is drawn instead)".</li>
+  </ol></div>
+
+  <h3>One library, shipped with render2d <span class="tag">0.5.5</span></h3>
+  <p>Decided on 5 November, as for the styles and the basemaps: the library lives in render2d's tree, <code>symbols/</code> beside <code>styles/</code> and <code>basemaps/</code>, and is installed beside <code>render2d.exe</code>. carto2D is installed in the same folder: the command line, carto2D and viewer2d (through render2d) draw with the same symbols. No folder elsewhere on the disk.</p>
+  <p>The user's own symbols go in the same library, in <code>symbols/user/</code>. That works because carto2D is installed for the user (<code>%LOCALAPPDATA%\Programs\carto2D</code>, no administrator): the folder is the user's to write in. And the installer (Inno Setup) replaces at an update only the files it ships, removes at an uninstall only the files it installed: <code>user/</code>, never shipped, is never touched. One trap, written in <code>symbols/README.txt</code>: a shipped symbol changed in place is replaced by the next update; copy it into <code>user/</code> first. A style then names it <code>user/park.svg</code>.</p>
+
+  <h3>What the library ships <span class="tag">0.5.6</span></h3>
+  <p>84 symbols in 8 families, chosen for a town map: <code>nature</code> (tree, park, playground, fountain...), <code>transport</code> (bus, bus stop, tram, metro, bicycle, parking...), <code>health</code> (hospital, pharmacy, defibrillator, fire hydrant...), <code>public</code> (town hall, post, school, library, toilet...), <code>culture</code>, <code>worship</code>, <code>shops</code>, <code>street</code> (bench, street lamp, waste basket, manhole...). A style names them by family: <code>url: nature/tree.svg</code>.</p>
+  <p>The glyphs come from <strong>Maki</strong> (Mapbox) and <strong>Temaki</strong> (the Rapid editor's team), two collections of map icons in the public domain (CC0 1.0): one black glyph per file, made to be read at 15 pixels. A black glyph alone reads badly on a map, and not at all on an orthophoto; the custom of maps is a <strong>white glyph on a disc of a colour per family</strong>: green for nature, blue for transport, red for health and emergency. <code>tools/make-symbols.py</code> makes each symbol from its glyph:</p>
+  <div class="calc"><strong>Worked out: <code>transport/bus.svg</code> from Maki's <code>bus.svg</code></strong><ol>
+    <li>The symbol: 20 × 20 units. A disc of radius 9.25 at (10, 10), blue <code>#2B6C8F</code>, a white rim of 1.5 (from 8.5 to 10 from the centre: it touches the square's edge).</li>
+    <li>Maki's glyph is drawn in a box of 15 × 15. It must fit in 11 × 11 in the middle: scale 11 ÷ 15 = <strong>0.7333</strong>; its corner goes to (20 − 11) ÷ 2 = <strong>4.5</strong>. One SVG group: <code>translate(4.5 4.5) scale(0.733333)</code>, filled white (the glyph's own fills removed, "none" kept).</li>
+    <li>A Temaki glyph of 50 × 50: scale 11 ÷ 50 = 0.22, the same corner 4.5. The script reads each glyph's <code>viewBox</code>.</li>
+    <li>On the map, <code>size: 16</code>: 16 ÷ 20 = 0.8 pixel per unit. The glyph is 11 × 0.8 = <strong>8.8 px</strong>, the rim 1.5 × 0.8 = <strong>1.2 px</strong>: enough to detach the disc from a dark background. On paper (§74): 16 × 0.28 mm = 4.5 mm.</li>
+  </ol></div>
+  <p>The symbols are committed with render2d: building or installing never needs the network. The script is run again only to add a glyph or change a colour: its header gives the two <code>git clone</code> commands; it rewrites the eight families' folders and <code>SOURCES.txt</code> (each symbol, its source and glyph), never <code>user/</code>. Checked on a contact sheet drawn by render2d itself, at 32 px and at 16 px; one glyph replaced after it: Temaki's <code>stop</code> (a plain octagon, a white blob at 16 px) by <code>board_bus</code>, the bus stop.</p>
+  <p><code>test_render</code> reads every symbol of <code>symbols/</code> with nanosvg: each must be an SVG render2d draws, 20 × 20. A regeneration that breaks one stops <code>ctest</code>.</p>
+
+  <h3>Written back as a name</h3>
+  <p>The writer (§59) writes an image relative to the style's folder when it is under it (<code>icons/arbre.svg</code>), <strong>else relative to the first library that holds it</strong> (<code>park.svg</code>, <code>nature/park.svg</code>), else whole. So a style edited in editor2d keeps naming its symbols, never the place where the library lives on that computer. The test reads a style naming <code>park.svg</code> and <code>nature/tree.svg</code>, writes it again: the names, never the library's path.</p>
+  <p>One case to know: a name written for a library, read again where the style's folder holds a different file of that name, gives the style's file. That is rule 2, on purpose; it is also why the libraries' symbols are best kept in sub-folders (<code>nature/</code>, <code>transport/</code>), where such a collision is unlikely.</p>
+
+  <h3>A map sent elsewhere</h3>
+  <p>The symbols are part of a map's data, as its shapefiles are. A map sent to someone without the library draws the marks until it gets the symbols. The answer is not to copy every symbol beside every style, but to <strong>package</strong> a map when it leaves: data, styles and the symbols they name in one folder or zip (later, in carto2D: "Export the project"). <code>findSymbol</code> already says which file each name is.</p>
+
+  <h3>Code and tests</h3>
+  <ul>
+    <li><code>style/symbol_folders.hpp</code>: <code>setSymbolFolders</code>, <code>symbolFolders</code> (set once at start, read by every thread, behind a lock), <code>findSymbol(url, styleDir)</code>, <code>symbolUrl(path, styleDir)</code>, <code>splitFolderList</code>. The reader uses the first, the writer the second. <code>programFolder()</code> in <code>gdal_convert</code> (the folder of <code>render2d.exe</code>, already used for PROJ's data, §68).</li>
+    <li><code>test_style</code> (19 checks): a library name, a sub-folder of the second library, beside the style, the style's folder winning over a library, absolute, not found; written back relative to the style, to the library, whole; the reader and the writer together; the warning naming where it looked; <code>R2D_SYMBOLS</code> split as <code>PATH</code>.</li>
+    <li>Tried with the program: a point styled with <code>url: arbre.svg</code>, the file only in a library: without <code>--symbols</code>, the red fallback square and the warning; with <code>--symbols</code> or <code>R2D_SYMBOLS</code>, the tree (its crown's green, 47, 125, 79, under the pixel).</li>
+  </ul>
+</section>
+
+<!-- ============================================================== -->
 <section id="refs">
-  <h2>76. References</h2>
+  <h2>77. References</h2>
   <h3>Books</h3>
   <ul class="refs">
     <li><strong>Adobe Systems, <em>PostScript Language Reference Manual</em></strong> (the "red book"), 3<sup>rd</sup> ed., 1999. The origin of the path / fill / stroke model, of the even-odd and non-zero rules, of <code>gsave</code>/<code>grestore</code>. Chapters 10 and 11.</li>
@@ -3509,6 +3562,7 @@ bash:  find /c/temp/wmscache -type f | wc -l</pre>
     <li><strong>PROJ, documentation</strong> — proj.org: <code>cs2cs</code>, <code>projinfo</code>, how an operation is chosen, grids and the network. Chapters 69 and 70.</li>
     <li><strong>GDAL, RFC 73 "Integration of PROJ6 for WKT2, late binding capabilities, time-dependent coordinates, and improved CRS-awareness"</strong> — gdal.org. The axis order since GDAL 3 and <code>OAMS_TRADITIONAL_GIS_ORDER</code>. Chapter 69.</li>
     <li><strong>W3C, <em>Scalable Vector Graphics (SVG) 1.1 (Second Edition)</em></strong>, 2011 — w3.org/TR/SVG11. Chapter 8 (paths: the commands and their curves), chapter 7 (<code>viewBox</code>, units), chapter 11 (painting: <code>fill-rule</code>, <code>stroke-linejoin</code>, <code>paint-order</code> is SVG 2). Chapter 75.</li>
+    <li><strong>Mapbox, Maki</strong> — github.com/mapbox/maki, and <strong>Temaki</strong> — github.com/rapideditor/temaki. Map icons, CC0 1.0: the glyphs of the symbol library. Chapter 76.</li>
     <li><strong>Mikko Mononen, nanosvg</strong> — github.com/memononen/nanosvg. The parser we embed (zlib licence), its README and its example rasteriser. Chapter 75.</li>
     <li><strong>GDAL, <code>OGRCoordinateTransformation</code>, <code>OCTTransformBounds</code>, the warper (<code>GDALWarp</code>) and the WMS driver (TMS mode)</strong> — gdal.org. Chapters 70 and 71.</li>
     <li><strong>OpenStreetMap Foundation, Tile Usage Policy</strong> — operations.osmfoundation.org/policies/tiles. And Geofabrik's extracts, download.geofabrik.de. Chapter 71.</li>
@@ -3517,7 +3571,7 @@ bash:  find /c/temp/wmscache -type f | wc -l</pre>
 
 <!-- ============================================================== -->
 <section id="road">
-  <h2>77. Roadmap</h2>
+  <h2>78. Roadmap</h2>
   <ol class="road">
     <li>Step 1 — Matrix, canvas, Cairo surface: test shapes in PNG, SVG and PDF. ✓</li>
     <li>Step 2 — GDAL/OGR reading: drawing a real layer with a fixed style. ✓</li>
@@ -3538,6 +3592,8 @@ bash:  find /c/temp/wmscache -type f | wc -l</pre>
     <li>Step 4a ✓ — Rasters (§65, §66): reading the view's window with its overviews, bands into ARGB32, transparent nodata, the <code>raster</code> symbolizer and its opacity. Same coordinate system as the map. Client: editor2d's raster layers.</li>
     <li>Step 5 — Printing (§74): a page at an exact scale, in PDF: the sheet, the frame, the title, the scale bar on the ground, the north arrow by PROJ, the attributions, a simple legend; <code>--page</code> and <code>print:</code>. Chosen on 2 November before the labels, for carto2D 1.0. 5a (0.5.0, 3 November) ✓ the page; 5b (0.5.1) ✓ the legend; 5c (0.5.2, editor2d 0.6.6) ✓ editor2d's Print. Step closed on 3 November.</li>
     <li>Step 3d-2 — SVG symbols (§75, 0.5.3, 3 November) ✓: nanosvg, one header, no DLL; the SVG read once and drawn as paths by our canvas, vector in a PDF, the same in the legend.</li>
+    <li>Step 3d-3 — Symbol libraries (§76, 0.5.4, 3 November) ✓: a url without a folder looked for after the style's folder in <code>--symbols</code>, <code>R2D_SYMBOLS</code>, <code>symbols/</code> beside render2d; written back as a name. 0.5.5 (5 November) ✓: the library in render2d's tree, <code>symbols/user/</code> for the user's own, shared with carto2D. 0.5.6 ✓: 84 symbols in 8 families from Maki and Temaki (CC0), <code>tools/make-symbols.py</code>.</li>
+    <li>Later — Recolouring an SVG symbol (noted 5 November): QGIS's "parametrised SVG" (<code>fill="param(fill) #2B6C8F"</code> in the file, a colour in the style, <code>param(fill)</code> replaced before nanosvg reads the text, one parsed image per colour); the library's discs made parametrised. Not SLD: an extension, as QGIS's.</li>
     <li>Step 4c — Web basemaps (§73): OpenStreetMap's tiles, the Region's WMTS and WMS, through GDAL's drivers. 4c-1 (0.4.9) ✓ the User-Agent, the cache, the clip to the map's area of use, the extent, the report, <code>basemaps/</code>. 4c-2 (0.4.10) ✓ the attributions, <code>--no-attribution</code> for tiles, no OSM pyramid. Phase closed on 2 November.</li>
     <li>Step 4b — On-the-fly reprojection (PROJ), §69 to §71: 4b-1 (0.4.5) ✓ vectors, <code>--crs</code>, <code>crs:</code> of the map and of a layer, the conversion per layer, the catalogue for editor2d; tested on OpenStreetMap against UrbIS. 4b-2 (0.4.8) ✓ rasters warped on the fly (§72). OpenStreetMap's tiles: step 4c, with the other web basemaps.</li>
     <li>Later, after reprojection and PostGIS, once editor2d and viewer2d are rich enough: <strong>render2d as a server</strong>, a program that stays up with its map open and answers over HTTP (<code>/map</code>, <code>/tiles/z/x/y</code>, <code>/query</code>, <code>/legend</code>, a style changed live) and as a <strong>standard WMS</strong>, readable by QGIS and any GIS client. The favoured option: <code>render2d --serve</code>, a process that stays up with its map open and talks through a pipe (stdin/stdout), one JSON line per request and per answer, the image as bytes right after, with the vocabulary of editor2d's commands (<code>map.render</code>, <code>layer.add</code>…). In front of it, FastAPI (or viewer2d) keeps a small pool of these processes: a GDAL crash kills only one, they draw in parallel. The other paths stay open: an HTTP server in C++ inside render2d, or render2d as a Python module (pybind11) if every millisecond counts. Then, real time: telling the server an area has changed, redrawing, invalidating the tiles.</li>

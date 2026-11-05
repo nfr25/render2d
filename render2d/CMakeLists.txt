@@ -62,6 +62,7 @@ add_library(r2d_style STATIC
     src/style/ysld_writer.cpp     # the reader's twin, for editor2d's style dialog (§59)
     src/style/catalog.cpp         # what each symbolizer can receive, for editor2d's "+" (§60)
     src/style/classify.cpp        # values, bounds, rules: editor2d's Categorize and Graduate (§62)
+    src/style/symbol_folders.cpp  # symbol libraries: where "park.svg" is looked for (§76)
 )
 target_link_libraries(r2d_style PUBLIC r2d_canvas PRIVATE PkgConfig::YAMLCPP r2d_warnings)
 
@@ -129,6 +130,7 @@ add_test(NAME filter COMMAND test_filter)
 
 add_executable(test_render tests/test_render.cpp)
 target_link_libraries(test_render PRIVATE r2d_render r2d_cairo r2d_warnings)
+target_compile_definitions(test_render PRIVATE R2D_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")   # §76: the symbol library
 add_test(NAME render COMMAND test_render)
 
 add_executable(test_map tests/test_map.cpp)

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "style/ysld_reader.hpp"
+#include "style/symbol_folders.hpp"
 
 #include <cctype>
 #include <filesystem>
@@ -310,10 +311,14 @@ private:
                                                                 : "'" + url + "' is an SVG: its format is image/svg+xml (ignored)");
                         } else if (url.empty()) {
                             warn(sym, "'external' needs a 'url'");
-                        } else if (!std::filesystem::exists(resolve(url))) {
-                            warn(sym, "image not found: " + resolve(url) + " (the next symbol is drawn instead)");
+                        } else if (const std::string found = findSymbol(url, baseDir_); found.empty()) {
+                            // §76: the style's folder, then the symbol libraries.
+                            std::string where = resolve(url);
+                            if (!std::filesystem::path(url).is_absolute())
+                                for (const std::string& f : symbolFolders()) where += ", " + (std::filesystem::path(f) / url).lexically_normal().string();
+                            warn(sym, "image not found: " + where + " (the next symbol is drawn instead)");
                         } else {
-                            pt.image = resolve(url);
+                            pt.image = found;
                         }
                     } else if (sym["mark"]) {
                         if (haveMark) { warn(sym, "only the first mark is drawn (others ignored)"); continue; }

@@ -72,6 +72,7 @@ find "$prefix/share/proj" -maxdepth 1 -type f ! -name '*.tif' -exec cp {} "$out/
 step "4. styles, basemaps, README, licenses"
 cp -r styles "$out/"
 cp -r basemaps "$out/"   # §73: OpenStreetMap, the Region's orthophoto and basemaps
+cp -r symbols "$out/"    # §76: the symbol library, with its empty user/
 top="$(cd "$root/.." && pwd)"
 [[ -f "$top/LICENSE" ]] && cp "$top/LICENSE" "$out/LICENSE.txt"
 

@@ -1,0 +1,101 @@
+render2d's symbol library: what each symbol is made from (tools/make-symbols.py).
+
+Each symbol is a white glyph on a disc of its family's colour. The glyphs:
+  maki: Maki, by Mapbox, https://github.com/mapbox/maki, CC0 1.0 (public domain).
+  temaki: Temaki, by the Rapid editor's team, https://github.com/rapideditor/temaki, CC0 1.0 (public domain).
+
+Families:
+  nature     #2F7D4F  trees, parks, gardens, water
+  transport  #2B6C8F  public transport, cycling, cars, parking
+  health     #C0392B  health, emergency, safety
+  public     #A0522D  administration, education, public services
+  culture    #7B4FA0  culture, leisure, sport, heritage
+  worship    #5E5E7A  places of worship, cemeteries
+  shops      #C77C02  shops, food and drink, banks
+  street     #666666  street furniture
+
+Symbols:
+nature/tree.svg                   temaki: tree_broadleaved
+nature/tree-conifer.svg           temaki: tree_needleleaved
+nature/park.svg                   maki: park
+nature/garden.svg                 maki: garden
+nature/playground.svg             maki: playground
+nature/dog-park.svg               maki: dog-park
+nature/picnic-site.svg            maki: picnic-site
+nature/water.svg                  maki: water
+nature/fountain.svg               temaki: fountain
+nature/viewpoint.svg              maki: viewpoint
+transport/bus.svg                 maki: bus
+transport/tram.svg                temaki: tram
+transport/rail.svg                maki: rail
+transport/metro.svg               maki: rail-metro
+transport/bicycle.svg             maki: bicycle
+transport/bicycle-share.svg       maki: bicycle-share
+transport/bicycle-parking.svg     temaki: bicycle_parked
+transport/car.svg                 maki: car
+transport/parking.svg             maki: parking
+transport/parking-garage.svg      maki: parking-garage
+transport/fuel.svg                maki: fuel
+transport/charging-station.svg    maki: charging-station
+transport/taxi.svg                maki: taxi
+transport/airport.svg             maki: airport
+transport/ferry.svg               maki: ferry
+transport/traffic-signals.svg     temaki: traffic_signals
+transport/bus-stop.svg            temaki: board_bus
+health/hospital.svg               maki: hospital
+health/doctor.svg                 maki: doctor
+health/pharmacy.svg               maki: pharmacy
+health/dentist.svg                maki: dentist
+health/veterinary.svg             maki: veterinary
+health/defibrillator.svg          maki: defibrillator
+health/fire-station.svg           maki: fire-station
+health/fire-hydrant.svg           temaki: fire_hydrant
+health/police.svg                 maki: police
+health/emergency-phone.svg        maki: emergency-phone
+public/town-hall.svg              maki: town-hall
+public/post.svg                   maki: post
+public/post-box.svg               temaki: post_box
+public/school.svg                 maki: school
+public/college.svg                maki: college
+public/library.svg                maki: library
+public/information.svg            maki: information
+public/embassy.svg                maki: embassy
+public/toilet.svg                 maki: toilet
+public/drinking-water.svg         maki: drinking-water
+public/wheelchair.svg             maki: wheelchair
+culture/museum.svg                maki: museum
+culture/theatre.svg               maki: theatre
+culture/cinema.svg                maki: cinema
+culture/art-gallery.svg           maki: art-gallery
+culture/music.svg                 maki: music
+culture/monument.svg              maki: monument
+culture/statue.svg                temaki: statue
+culture/castle.svg                maki: castle
+culture/attraction.svg            maki: attraction
+culture/stadium.svg               maki: stadium
+culture/swimming.svg              maki: swimming
+culture/zoo.svg                   maki: zoo
+worship/place-of-worship.svg      maki: place-of-worship
+worship/christian.svg             maki: religious-christian
+worship/jewish.svg                maki: religious-jewish
+worship/muslim.svg                maki: religious-muslim
+worship/cemetery.svg              maki: cemetery
+shops/shop.svg                    maki: shop
+shops/grocery.svg                 maki: grocery
+shops/bakery.svg                  maki: bakery
+shops/restaurant.svg              maki: restaurant
+shops/cafe.svg                    maki: cafe
+shops/bar.svg                     maki: bar
+shops/fast-food.svg               maki: fast-food
+shops/bank.svg                    maki: bank
+shops/atm.svg                     temaki: atm
+shops/hairdresser.svg             maki: hairdresser
+street/bench.svg                  temaki: bench
+street/street-lamp.svg            temaki: street_lamp_arm
+street/waste-basket.svg           maki: waste-basket
+street/recycling.svg              maki: recycling
+street/bollard.svg                temaki: bollard
+street/security-camera.svg        temaki: security_camera
+street/manhole.svg                temaki: manhole
+street/clock.svg                  temaki: clock
+street/telephone.svg              maki: telephone

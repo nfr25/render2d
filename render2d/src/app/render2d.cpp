@@ -29,6 +29,8 @@
 #include "style/classify.hpp"
 #include "style/ysld_reader.hpp"
 #include "style/ysld_writer.hpp"
+#include "style/symbol_folders.hpp"
+#include "backend/gdal/gdal_convert.hpp"   // programFolder (§76)
 
 using namespace r2d;
 
@@ -83,6 +85,10 @@ const char* kUsage =
     "                         per class\n"
     "  --colours RRGGBB RRGGBB      --graduate: the light and the dark end (default FFF5EB 8C2D04)\n"
     "  --write-style FILE.yaml      writes the style made by --categorize or --graduate\n"
+    "  --symbols DIR          a symbol library: an image a style names without its folder\n"
+    "                         (park.svg) is looked for there, after the style's own folder.\n"
+    "                         Repeatable; then R2D_SYMBOLS (folders separated as in PATH),\n"
+    "                         then symbols/ beside render2d (one folder up from build/) (§76)\n"
     "  --version              version of render2d, GDAL and Cairo\n";
 
 struct SourceSpec {
@@ -95,6 +101,7 @@ struct Options {
     std::optional<std::string> config;   // --config: viewer.yaml (§57)
     std::string              crs;        // --crs (§70)
     bool                     attributions = true;   // --no-attribution (§73): for the tiles of a pyramid
+    std::vector<std::string> symbols;               // --symbols DIR, repeated (§76)
     std::vector<SourceSpec>  sources;
     std::optional<Envelope>  bbox;
     int                      width  = 1000;
@@ -149,6 +156,9 @@ bool parseArgs(int argc, char** argv, Options& o) {
             o.crs = argv[++i];
         } else if (a == "--no-attribution") {   // §73
             o.attributions = false;
+        } else if (a == "--symbols") {          // §76
+            if (!need(1)) return false;
+            o.symbols.push_back(argv[++i]);
         } else if (a == "--page") {             // §74
             if (!need(1)) return false;
             o.page = argv[++i];
@@ -445,6 +455,22 @@ int main(int argc, char** argv) {
 
     Options opt;
     if (!parseArgs(argc, argv, opt)) return 2;
+
+    // §76: the symbol libraries, before any style is read.
+    {
+        std::vector<std::string> folders = opt.symbols;
+        if (const char* env = std::getenv("R2D_SYMBOLS"))
+            for (std::string& f : splitFolderList(env)) folders.push_back(std::move(f));
+        // symbols/ beside the program (installed), else one folder up (run from build/).
+        if (const std::string exe = programFolder(); !exe.empty()) {
+            const std::filesystem::path beside = std::filesystem::path(exe) / "symbols";
+            const std::filesystem::path up = std::filesystem::path(exe).parent_path() / "symbols";
+            std::error_code ec;
+            folders.push_back((!std::filesystem::is_directory(beside, ec) && std::filesystem::is_directory(up, ec)
+                                   ? up : beside).string());
+        }
+        setSymbolFolders(std::move(folders));
+    }
 
     std::vector<std::string> warnings;
     auto warn = [&](const std::string& w) { warnings.push_back(w); };

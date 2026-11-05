@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "style/ysld_writer.hpp"
+#include "style/symbol_folders.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -240,13 +241,8 @@ private:
     }
 
     // An image under the folder the style is saved in: written relative to it.
-    std::string imagePath(const std::string& path) const {
-        namespace fs = std::filesystem;
-        if (baseDir_.empty()) return fs::path(path).generic_string();
-        const fs::path rel = fs::path(path).lexically_relative(fs::path(baseDir_));
-        if (rel.empty() || *rel.begin() == "..") return fs::path(path).generic_string();
-        return rel.generic_string();
-    }
+    // §59, §76: relative to the style's folder, else to a symbol library, else whole.
+    std::string imagePath(const std::string& path) const { return symbolUrl(path, baseDir_); }
 };
 
 } // namespace
