@@ -6,7 +6,7 @@
 
 namespace r2d {
 
-inline constexpr const char* kVersion = "0.5.6";
-inline constexpr const char* kVersionStep = "step 3d-3 (0.5.6: the symbol library, 84 symbols from Maki and Temaki)";
+inline constexpr const char* kVersion = "0.5.7";
+inline constexpr const char* kVersionStep = "step 3d-3 (0.5.7: the symbol files committed at last)";
 
 } // namespace r2d

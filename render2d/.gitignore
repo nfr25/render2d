@@ -6,3 +6,7 @@ build-release/
 !docs/**
 regress/
 dist/
+!symbols/**
+!styles/**
+symbols/user/*
+!symbols/user/README.txt

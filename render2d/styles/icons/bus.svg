@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A bus stop: a "B" on a blue square (render2d notes §75). CC0: drawn for render2d.
+     nanosvg does not read text: the letter is a path. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <rect id="plate" x="1" y="1" width="30" height="30" rx="4" fill="#2B6C8F"/>
+  <path id="letter" fill="#FFFFFF" fill-rule="evenodd"
+        d="M9 6 H18 A5.5 5.5 0 0 1 21 16 A5.5 5.5 0 0 1 18.5 26 H9 Z
+           M13 9.5 V14.5 H17 A2.5 2.5 0 0 0 17 9.5 Z
+           M13 17.5 V22.5 H17.5 A2.5 2.5 0 0 0 17.5 17.5 Z"/>
+</svg>

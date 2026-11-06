@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- An arrow pointing north, turned by the style's rotation (render2d notes §75). CC0: drawn for render2d. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <path id="arrow" d="M16 2 L29 15 H21 V30 H11 V15 H3 Z"
+        fill="#FFFFFF" stroke="#555555" stroke-width="2" stroke-linejoin="round"/>
+</svg>
