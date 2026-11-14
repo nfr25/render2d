@@ -1,0 +1,102 @@
+# render2d's continuous integration (render2d/docs/notions.en.html, §68).
+#
+# At every push to main, every pull request, every tag v*, and on demand
+# (Actions ▸ build ▸ Run workflow): two fresh machines of GitHub build the C++
+# renderer (render2d/) and run its tests, one on Ubuntu 24.04, one on Windows
+# (MSYS2 UCRT64, as at home). A failed build or test is a red cross on the commit.
+#
+# On Windows, the portable zip too (render2d/tools/package-windows.sh: the
+# program, its DLLs, GDAL's and PROJ's files, the styles, basemaps and
+# symbols, checked without MSYS2 in the PATH), kept as an artifact of the
+# run. At a tag v*, a DRAFT release with that zip: read it on GitHub
+# (Releases), then Publish.
+#
+# The tests never use the network (notes §73). viewer2d and tiles2d (Python)
+# are not built here.
+
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Sources
+        uses: actions/checkout@v5
+
+      - name: Packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config \
+            libgdal-dev libcairo2-dev libyaml-cpp-dev
+
+      - name: Build and test
+        working-directory: render2d
+        run: make test CMAKE_ARGS="-G Ninja"
+
+      - name: The program answers
+        working-directory: render2d
+        run: build/render2d --version
+
+  windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write          # to create the release, at a tag
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Sources
+        uses: actions/checkout@v5
+
+      - name: MSYS2 UCRT64 and the packages
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          cache: true
+          install: make git zip
+          pacboy: >-
+            toolchain:p cmake:p ninja:p pkgconf:p
+            cairo:p gdal:p yaml-cpp:p
+
+      - name: Build and test
+        working-directory: render2d
+        run: make test CMAKE_ARGS="-G Ninja"
+
+      - name: Package (the program, its DLLs, data and licences; checked without MSYS2)
+        # notes §68: dist/render2d-<version>-windows-x64.zip, the portable version.
+        working-directory: render2d
+        run: CMAKE_ARGS="-G Ninja" tools/package-windows.sh
+
+      - name: Keep the zip (an artifact of this run)
+        # At the bottom of the run's page in Actions, to download and try. Kept 30 days.
+        uses: actions/upload-artifact@v7
+        with:
+          name: render2d-windows-x64
+          path: render2d/dist/render2d-*-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Release (at a tag v*, as a draft)
+        # A tag v0.5.10 makes a DRAFT release "render2d 0.5.10" with the zip:
+        # read it on GitHub (Releases), then Publish. The tag must be the
+        # version of render2d/src/app/version.hpp.
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(grep -m1 -oE 'kVersion *= *"[0-9.]+"' render2d/src/app/version.hpp | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          if [ "v$version" != "${{ github.ref_name }}" ]; then
+            echo "the tag ${{ github.ref_name }} is not the version of render2d/src/app/version.hpp ($version)"; exit 1
+          fi
+          gh release create "${{ github.ref_name }}" --draft --title "render2d $version" --generate-notes \
+            render2d/dist/render2d-$version-windows-x64.zip

@@ -6,7 +6,7 @@
 
 namespace r2d {
 
-inline constexpr const char* kVersion = "0.5.9";
-inline constexpr const char* kVersionStep = "step 3d-3 (0.5.9: legendLines, a style's legend without a Map)";
+inline constexpr const char* kVersion = "0.5.10";
+inline constexpr const char* kVersionStep = "step 3d-3 (0.5.10: built and released by GitHub Actions)";
 
 } // namespace r2d

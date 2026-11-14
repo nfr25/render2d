@@ -15,8 +15,8 @@
 # 5. checks that it starts WITHOUT MSYS2 in the PATH, and draws a test map
 # 6. zips it: dist/render2d-<version>-windows-x64.zip
 #
-# The zip is then attached to a GitHub Release by hand (Releases > Draft a
-# new release > the tag > drop the zip).
+# Since 0.5.10 GitHub runs this very script at every push, and attaches the
+# zip to a draft release at every tag v* (.github/workflows/build.yml, §68).
 # =============================================================================
 
 set -euo pipefail
@@ -153,4 +153,4 @@ fi
 size=$(du -m "$name.zip" | cut -f1)
 echo
 echo "dist/$name.zip  ($size MB)"
-echo "Next: GitHub > Releases > Draft a new release > tag v$version > drop the zip."
+echo "At a tag v$version, GitHub builds the same zip and attaches it to a draft release (build.yml)."
