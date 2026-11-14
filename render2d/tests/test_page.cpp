@@ -16,6 +16,7 @@
 #include "map/config.hpp"
 #include "map/map.hpp"
 #include "map/page.hpp"
+#include "style/ysld_reader.hpp"
 
 using namespace r2d;
 namespace fs = std::filesystem;
@@ -287,6 +288,48 @@ void testLegendRoom() {
     CHECK(composePage(map, spec, *plan, img->canvas()).warnings.empty());
 }
 
+// §74: legendLines, from a style alone (carto2D's Layers panel). Two
+// passes: the casing of "primary" under its fill, one line; an unnamed rule
+// counted as the report names it; a rule out of scale left out.
+void testLegendLines() {
+    const char* text = R"(name: roads
+feature-styles:
+- rules:
+  - name: primary
+    filter: ${highway = 'primary'}
+    symbolizers:
+    - line: {stroke-color: '#888888', stroke-width: 6}
+  - filter: ${highway = 'service'}
+    symbolizers:
+    - line: {stroke-color: '#FFFFFF', stroke-width: 2}
+  - name: footway
+    filter: ${highway = 'footway'}
+    scale: [min, 5000]
+    symbolizers:
+    - line: {stroke-color: '#FA8072', stroke-width: 1}
+- rules:
+  - name: primary
+    filter: ${highway = 'primary'}
+    symbolizers:
+    - line: {stroke-color: '#FCD6A4', stroke-width: 4}
+)";
+    const auto read = parseYsld(text);
+    CHECK(read.style.has_value());
+    if (!read.style) return;
+    const auto lines = legendLines(*read.style, GeomType::Line, 10000, "roads");
+    CHECK(lines.size() == 2);   // primary, the unnamed rule; footway is out of scale at 1:10 000
+    if (lines.size() == 2) {
+        CHECK(lines[0].label == "primary" && lines[0].symbols.size() == 2);   // the casing, then the fill
+        CHECK(lines[0].counted == std::vector<std::string>{"primary"});
+        CHECK(lines[1].label == "roads");                                     // unnamed: the layer's title
+        CHECK(lines[1].counted == std::vector<std::string>{"pass 1 rule 2"});
+    }
+    CHECK(legendLines(*read.style, GeomType::Line, 2000, "roads").size() == 3);   // footway at 1:2 000
+    const std::vector<std::string> used{"primary"};
+    const auto seen = legendLines(*read.style, GeomType::Line, 10000, "roads", &used);
+    CHECK(seen.size() == 1 && seen[0].label == "roads");   // one line left: the layer itself
+}
+
 } // namespace
 
 int main() {
@@ -298,5 +341,6 @@ int main() {
     testLegend();
     testLegendRoom();
     testLegendStacked();
+    testLegendLines();
     return check::summary();
 }

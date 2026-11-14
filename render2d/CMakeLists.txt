@@ -54,6 +54,9 @@ add_library(r2d_gdal STATIC
     src/backend/gdal/gdal_reproject.cpp   # each layer in the map's CRS (§69, §70)
 )
 target_link_libraries(r2d_gdal PUBLIC r2d_core PRIVATE GDAL::GDAL PkgConfig::PROJ r2d_warnings)
+if(WIN32)
+    target_link_libraries(r2d_gdal PRIVATE shell32)   # SHGetFolderPathW, the web cache (§73)
+endif()
 
 # --- style: the SLD model, expressions and the YSLD reader (§22 to §29, §35) --
 add_library(r2d_style STATIC

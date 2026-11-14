@@ -202,6 +202,50 @@ int drawLegend(Canvas& cv, const std::vector<LegendGroup>& groups, double x, dou
 
 } // namespace
 
+std::vector<LegendLine> legendLines(const Style& style, std::optional<GeomType> type, double scale,
+                                    const std::string& title, const std::vector<std::string>* used) {
+    // A style without any filter draws every rule on every feature (a pale
+    // ground, then a boundary): one symbol on the map, so one line, its
+    // rules stacked, under the layer's title. Classes need filters.
+    bool anyFilter = false;
+    for (const FeatureTypeStyle& fts : style.featureStyles)
+        for (const Rule& rule : fts.rules)
+            if (rule.filter || rule.isElse || rule.invalid) anyFilter = true;
+    std::vector<std::string> order;            // the rules' names, as first met
+    std::map<std::string, LegendLine> lines;
+    for (std::size_t p = 0; p < style.featureStyles.size(); ++p) {   // the passes, in order
+        const FeatureTypeStyle& fts = style.featureStyles[p];
+        for (const Rule* rule : activeRules(fts, scale)) {
+            // The name the render's report counts it by (an unnamed rule: "pass 2 rule 1").
+            const std::string counted = rule->name.empty()
+                ? "pass " + std::to_string(p + 1) + " rule " + std::to_string(rule - fts.rules.data() + 1)
+                : rule->name;
+            if (used && std::find(used->begin(), used->end(), counted) == used->end()) continue;
+            std::vector<Symbolizer> syms;
+            for (const Symbolizer& sym : rule->symbolizers)
+                if (!std::holds_alternative<TextSymbolizer>(sym) && !std::holds_alternative<RasterSymbolizer>(sym))
+                    syms.push_back(sym);
+            if (syms.empty()) continue;
+            const std::string key = anyFilter ? rule->name : std::string();
+            auto [it, fresh] = lines.try_emplace(key);
+            if (fresh) {
+                order.push_back(key);
+                it->second.label = rule->name.empty() ? title : rule->name;
+                if (type) it->second.sample = *type;
+                else if (std::holds_alternative<LineSymbolizer>(syms[0])) it->second.sample = GeomType::Line;
+                else if (std::holds_alternative<PointSymbolizer>(syms[0])) it->second.sample = GeomType::Point;
+            }
+            if (std::find(it->second.counted.begin(), it->second.counted.end(), counted) == it->second.counted.end())
+                it->second.counted.push_back(counted);
+            for (Symbolizer& s : syms) it->second.symbols.push_back(std::move(s));
+        }
+    }
+    std::vector<LegendLine> out;
+    for (const std::string& name : order) out.push_back(std::move(lines[name]));
+    if (out.size() == 1) out[0].label = title;   // one line: the layer itself
+    return out;
+}
+
 std::vector<LegendGroup> legendEntries(const Map& map, const View& view, double pixelRatio, const MapReport* drawn) {
     std::vector<LegendGroup> groups;
     const double scale = view.scaleDenominator();
@@ -215,9 +259,8 @@ std::vector<LegendGroup> legendEntries(const Map& map, const View& view, double 
         const GeomType guess = info.type ? *info.type : GeomType::Polygon;
         const Style style = scaledStyle(map.layerStyle(i, guess), pixelRatio);
         // The rules that drew on the page, by the names the report gives
-        // them (an unnamed rule: "pass 2 rule 1").
-        // Without filters the report does not count per rule: every active
-        // rule then drew every feature, so all of them when one was drawn.
+        // them. Without filters the report does not count per rule: every
+        // active rule then drew every feature, so all of them when one was drawn.
         std::vector<std::string> used;
         bool filtered = false;
         if (drawn) {
@@ -231,44 +274,8 @@ std::vector<LegendGroup> legendEntries(const Map& map, const View& view, double 
         }
         LegendGroup group;
         group.title = map.layerTitle(i);
-        // A style without any filter draws every rule on every feature (a pale
-        // ground, then a boundary): one symbol on the map, so one line, its
-        // rules stacked, under the layer's title. Classes need filters.
-        bool anyFilter = false;
-        for (const FeatureTypeStyle& fts : style.featureStyles)
-            for (const Rule& rule : fts.rules)
-                if (rule.filter || rule.isElse || rule.invalid) anyFilter = true;
-        std::vector<std::string> order;            // the rules' names, as first met
-        std::map<std::string, LegendLine> lines;
-        for (std::size_t p = 0; p < style.featureStyles.size(); ++p) {   // the passes, in order
-            const FeatureTypeStyle& fts = style.featureStyles[p];
-            for (const Rule* rule : activeRules(fts, scale)) {
-                if (filtered) {
-                    const std::string counted = rule->name.empty()
-                        ? "pass " + std::to_string(p + 1) + " rule " + std::to_string(rule - fts.rules.data() + 1)
-                        : rule->name;
-                    if (std::find(used.begin(), used.end(), counted) == used.end()) continue;
-                }
-                std::vector<Symbolizer> syms;
-                for (const Symbolizer& sym : rule->symbolizers)
-                    if (!std::holds_alternative<TextSymbolizer>(sym) && !std::holds_alternative<RasterSymbolizer>(sym))
-                        syms.push_back(sym);
-                if (syms.empty()) continue;
-                const std::string key = anyFilter ? rule->name : std::string();
-                auto [it, fresh] = lines.try_emplace(key);
-                if (fresh) {
-                    order.push_back(key);
-                    it->second.label = rule->name.empty() ? group.title : rule->name;
-                    if (info.type) it->second.sample = *info.type;
-                    else if (std::holds_alternative<LineSymbolizer>(syms[0])) it->second.sample = GeomType::Line;
-                    else if (std::holds_alternative<PointSymbolizer>(syms[0])) it->second.sample = GeomType::Point;
-                }
-                for (Symbolizer& s : syms) it->second.symbols.push_back(std::move(s));
-            }
-        }
-        for (const std::string& name : order) group.lines.push_back(std::move(lines[name]));
+        group.lines = legendLines(style, info.type, scale, group.title, filtered ? &used : nullptr);
         if (group.lines.empty()) continue;
-        if (group.lines.size() == 1) group.lines[0].label = group.title;   // one line: the layer itself
         groups.push_back(std::move(group));
     }
     return groups;

@@ -61,8 +61,9 @@ std::vector<std::string> gdalDataInfo();
 void setWebIdentity(const std::string& userAgent);
 
 // §73: the folder where the tiles of web services are kept (7 days, GDAL's
-// default): %LOCALAPPDATA%\render2d\cache\web on Windows, ~/.cache/render2d/web
-// elsewhere; GDAL_DEFAULT_WMS_CACHE_PATH, set by the user, wins.
+// default): %LOCALAPPDATA%\render2d\cache\web on Windows (asked to Windows when
+// the variable is missing), ~/.cache/render2d/web elsewhere;
+// GDAL_DEFAULT_WMS_CACHE_PATH, set by the user, wins.
 std::string webCacheFolder();
 
 // A zone written in WKT (§56): "POLYGON((x y, x y, ...))", read by GDAL. The

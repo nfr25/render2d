@@ -14,6 +14,7 @@
 #    define NOMINMAX
 #  endif
 #  include <windows.h>
+#  include <shlobj.h>   // SHGetFolderPathW: the user's local application data (§73)
 #else
 #  include <unistd.h>
 #endif
@@ -181,6 +182,12 @@ void setIfUnset(const char* key, const std::string& value) {
 std::filesystem::path userCacheFolder() {
 #ifdef _WIN32
     if (const char* d = std::getenv("LOCALAPPDATA"); d && *d) return std::filesystem::path(d) / "render2d" / "cache";
+    // §73: no LOCALAPPDATA (a program started with an emptied environment):
+    // the same folder, asked to Windows itself. Not the temporary folder:
+    // without TEMP and TMP either, Windows gives its own folder (C:\Windows).
+    wchar_t local[MAX_PATH];
+    if (SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, 0, local) == S_OK)
+        return std::filesystem::path(local) / "render2d" / "cache";
 #else
     if (const char* d = std::getenv("XDG_CACHE_HOME"); d && *d) return std::filesystem::path(d) / "render2d";
     if (const char* h = std::getenv("HOME"); h && *h) return std::filesystem::path(h) / ".cache" / "render2d";

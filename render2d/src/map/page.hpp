@@ -89,6 +89,7 @@ struct LegendLine {
     std::string             label;      // the rule's name, else the layer's title
     GeomType                sample = GeomType::Polygon;   // what the swatch shows
     std::vector<Symbolizer> symbols;    // in drawing order, scaled for the paper
+    std::vector<std::string> counted;   // its rules' names in the render's report (RuleCount), each once
 };
 struct LegendGroup {
     std::string             title;      // the layer's title
@@ -99,6 +100,17 @@ struct LegendGroup {
 // roads have 13 kinds; a district shows 4 of them).
 std::vector<LegendGroup> legendEntries(const Map& map, const View& view, double pixelRatio,
                                        const MapReport* drawn = nullptr);
+
+// §74: the lines of ONE style at a scale, as the page's legend makes
+// them: the rules active at `scale`, matched by name across the passes, their
+// symbolizers stacked (not the texts nor the rasters); a style without
+// filters, or with one line only, is one line labelled `title`. `type`: the
+// layer's geometry when known (the swatch). `used`: when given, only the
+// rules whose report name is in it (the page: what drew something). No Map
+// needed: carto2D's Layers panel calls it with the styles it holds, the
+// page through legendEntries.
+std::vector<LegendLine> legendLines(const Style& style, std::optional<GeomType> type, double scale,
+                                    const std::string& title, const std::vector<std::string>* used = nullptr);
 
 // "parcels: Evere, Schaerbeek, (other); roads", for the report.
 std::string legendText(const std::vector<LegendGroup>& groups);
