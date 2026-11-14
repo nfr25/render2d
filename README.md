@@ -7,6 +7,13 @@ A small map renderer in the spirit of the GDAL tools, and its web test bench.
 *The whole Brussels-Capital Region drawn by render2d: parcels, and buildings
 coloured by footprint area. Brussels, UrbIS data.*
 
+## Download
+
+Windows (64-bit): the portable zip of the
+[latest release](https://github.com/nfr25/render2d/releases/latest).
+Unzip anywhere, open a command prompt in the folder and run `render2d --help`.
+Everything it needs is inside (GDAL, PROJ, Cairo, the styles and symbols).
+
 Website and design notes: <https://nfr25.github.io/render2d/>
 
 ```
