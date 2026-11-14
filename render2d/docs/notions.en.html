@@ -180,8 +180,9 @@ th{background:var(--code)}
   <strong style="margin-top:8px">Symbols, again</strong>
   <a href="#svg">75. SVG symbols, with nanosvg</a>
   <a href="#symlib">76. Symbol libraries</a>
-  <a href="#refs">77. References</a>
-  <a href="#road">78. Roadmap</a>
+  <a href="#jenks">77. Natural breaks (Jenks)</a>
+  <a href="#refs">78. References</a>
+  <a href="#road">79. Roadmap</a>
 </nav>
 
 <!-- ============================================================== -->
@@ -2257,6 +2258,7 @@ std::vector&lt;double&gt; classBreaks(const std::vector&lt;double&gt;&amp; sorte
   <div class="calc"><strong>editor2d §49's ten areas: 30, 45, 60, 80, 110, 150, 220, 300, 450, 900; 3 classes</strong><ol>
     <li>Equal intervals: (900 − 30) ÷ 3 = 290; the inner breaks 30 + 290 = <strong>320</strong> and 320 + 290 = <strong>610</strong>.</li>
     <li>Quantiles: ranks ⌊1 × 10 ÷ 3⌋ = 3 and ⌊2 × 10 ÷ 3⌋ = 6, counting from 0: <strong>80</strong> and <strong>220</strong>.</li>
+    <li>Natural breaks (Jenks), since 0.5.11: <strong>220</strong> and <strong>900</strong>, the cuts in the gaps (§77).</li>
     <li>Two equal breaks (many identical values) make only one, and a break equal to the smallest value is removed: fewer classes, never an empty class.</li>
     <li>Equal-interval breaks are rounded to 6 significant digits: 607.24 and not 607.2399999999999, the computer's binary writing.</li>
   </ol></div>
@@ -2281,7 +2283,7 @@ render2d batiments.fgb --style styles/batiments.yaml \
 </pre>
   <ul>
     <li><code>--categorize FIELD</code> or <code>--graduate FIELD</code> apply to the <strong>last</strong> SOURCE on the line. Its <code>--style</code> gives the symbol to keep (hatch, outline, labels); without a style, the default look.</li>
-    <li><code>--classes</code>, <code>--method equal|quantiles</code>, <code>--colours LIGHT DARK</code>: the assistant's settings.</li>
+    <li><code>--classes</code>, <code>--method equal|quantiles|natural</code> (natural breaks since 0.5.11, §77), <code>--colours LIGHT DARK</code>: the assistant's settings.</li>
     <li>The legend is always printed, like editor2d's preview: colour, number of features, rule name. No image without <code>-o</code> (like <code>--at</code>, §53).</li>
     <li><code>--write-style</code> writes the style: an ordinary YSLD file, which everything else can read.</li>
   </ul>
@@ -3533,8 +3535,65 @@ bash:  find /c/temp/wmscache -type f | wc -l</pre>
 </section>
 
 <!-- ============================================================== -->
+<section id="jenks">
+  <h2>77. Natural breaks (Jenks) <span class="tag">0.5.11</span></h2>
+  <p>Equal intervals cut the range into equal parts, quantiles put as many features in each class (§62). Neither looks at <em>where the values are</em>. On parcels whose areas run from a few m² to a few hectares, equal intervals put 399,941 of 400,000 in the first class (seen in carto2D on 8 November). Jenks's natural breaks cut where the values thin out: in the gaps.</p>
+
+  <h3>The idea, on eight values</h3>
+  <div class="calc"><strong>1, 2, 3, 10, 11, 12, 30, 31 in 3 classes</strong>
+    <ol>
+      <li>Equal intervals: (31 − 1) ÷ 3 = 10, cuts at 11 and 21. Classes: 1, 2, 3, 10 · 11, 12 · 30, 31. The 10 sits with the small ones.</li>
+      <li>How good is a class: each value's distance to the class's mean, squared, added up. The first class: mean (1 + 2 + 3 + 10) ÷ 4 = 4; (1 − 4)² + (2 − 4)² + (3 − 4)² + (10 − 4)² = 9 + 4 + 1 + 36 = <strong>50</strong>. The second: mean 11.5; 0.25 + 0.25 = 0.5. The third: 0.5. In all: <strong>51</strong>.</li>
+      <li>Cut at 10 and 30 instead: 1, 2, 3 · 10, 11, 12 · 30, 31. Means 2, 11, 30.5; 1 + 0 + 1 = 2, then 2, then 0.5. In all: <strong>4.5</strong>, eleven times less.</li>
+      <li>Natural breaks = the cuts that make that total the smallest of all. Here 10 and 30: the gaps.</li>
+    </ol>
+  </div>
+  <p>The ten areas of §62 (30, 45, 60, 80, 110, 150, 220, 300, 450, 900), three classes:</p>
+  <div class="scroll"><table>
+    <tr><th>Method</th><th>Cuts</th><th>Classes</th><th>Squared deviations</th></tr>
+    <tr><td>equal intervals</td><td>320, 610</td><td>30…300 · 450 · 900</td><td>62,171.9</td></tr>
+    <tr><td>quantiles</td><td>80, 220</td><td>30, 45, 60 · 80, 110, 150 · 220…900</td><td>279,591.7</td></tr>
+    <tr><td>natural breaks</td><td>220, 900</td><td>30…150 · 220, 300, 450 · 900</td><td>37,187.5</td></tr>
+  </table></div>
+
+  <h3>How: Fisher's exact method</h3>
+  <p>Trying every way is out of reach: 8 values in 3 classes can be cut in 21 ways, 3,000 values in 10 classes in about 5 × 10<sup>25</sup>. Walter Fisher (1958) gave the exact answer by <em>dynamic programming</em>: the best way to put the first m values in j classes is the best way to put the first i values in j − 1 classes, plus the values i to m − 1 as the last class, for the best i. Each answer is built from the smaller ones, kept in a table: 10 × 3,000 × 3,000 ÷ 2 ≈ 45 million small steps instead of 5 × 10<sup>25</sup>.</p>
+  <div class="calc"><strong>A class's total in one step, from running sums</strong>
+    <ol>
+      <li>Squared deviations = sum of the squares − (sum)² ÷ count.</li>
+      <li>10, 11, 12: squares 100 + 121 + 144 = 365; sum 33; 365 − 33² ÷ 3 = 365 − 1,089 ÷ 3 = 365 − 363 = <strong>2</strong>, as counted above.</li>
+      <li>The running sums of the sorted values are computed once; any class's sum is then a difference of two of them. The values are first centred on their mean, so that areas of 10<sup>6</sup> m², squared and added 3,000 times, keep their last digits.</li>
+    </ol>
+  </div>
+  <p>Equal values are never split: a cut is allowed only where the value changes. 5, 5, 5, 5, 9, 9, 9, 9 asked in 4 classes gives 2 (cut at 9), as the other methods do (§62: fewer classes, never an empty one).</p>
+
+  <h3>Many values: a regular sample, then the cut put back on the true values</h3>
+  <p>The table grows as the square of the count: 400,000 values would take 10 × 400,000² ÷ 2 = 8 × 10<sup>11</sup> steps. Beyond 3,000 values (<code>kNaturalBreaksSample</code>), the breaks are computed on 3,000 values taken at even ranks of the sorted list, the first and the last included. QGIS does the same with a random sample; here the ranks are fixed, so the same data always give the same breaks (and the tests can check them).</p>
+  <div class="calc"><strong>Two heaps: 1 to 50,000 and 1,000,001 to 1,050,000 (100,000 values)</strong>
+    <ol>
+      <li>The sample's step: 99,999 ÷ 2,999 ≈ 33.3 ranks. The first sample in the second heap is 1,000,017: the 16 values before it were not seen.</li>
+      <li>Cut on the sample alone: at 1,000,017, and 1,000,001 to 1,000,016 would fall in the first class.</li>
+      <li>So the cut goes halfway between the last sample below it and the first above it, (49,983 + 1,000,017) ÷ 2 = 525,000, onto the first true value from there: <strong>1,000,001</strong>, exactly.</li>
+    </ol>
+  </div>
+  <p>Measured here on 400,000 values (a long-tailed spread, as areas): 17 ms for 5 classes, 37 ms for 10.</p>
+
+  <h3>What it does not do</h3>
+  <p>Natural breaks follow the gaps; they do not balance the counts. On that long-tailed spread, 5 classes: equal intervals give 399,863 · 105 · 20 · 10 · 2 features, natural breaks 358,053 · 35,617 · 5,464 · 854 · 12, quantiles 80,000 in each. Jenks sets the big ones apart, which is what a map of areas often wants; for classes of equal size, quantiles.</p>
+
+  <h3>In code, and where it is used</h3>
+  <ul>
+    <li><code>BreakMethod::NaturalBreaks</code> in <code>classBreaks</code> (<code>style/classify.cpp</code>), beside the two others; the rules, filters and colours of §62 are unchanged.</li>
+    <li>The command line: <code>--graduate AREA --method natural</code> (or <code>jenks</code>), §63.</li>
+    <li>carto2D: the third choice of Classify's method list ("natural breaks (Jenks)").</li>
+    <li>Tests (<code>test_classify</code>): the eight values (10, 30), the ten areas in 3 classes (220, 900) and in 5 (110, 220, 450, 900), equal values never split, one value only, the two heaps sampled (1,000,001).</li>
+  </ul>
+  <p>Version 0.5.11.</p>
+</section>
+
+<!-- ============================================================== -->
 <section id="refs">
-  <h2>77. References</h2>
+  <h2>78. References</h2>
   <h3>Books</h3>
   <ul class="refs">
     <li><strong>Adobe Systems, <em>PostScript Language Reference Manual</em></strong> (the "red book"), 3<sup>rd</sup> ed., 1999. The origin of the path / fill / stroke model, of the even-odd and non-zero rules, of <code>gsave</code>/<code>grestore</code>. Chapters 10 and 11.</li>
@@ -3589,7 +3648,7 @@ bash:  find /c/temp/wmscache -type f | wc -l</pre>
 
 <!-- ============================================================== -->
 <section id="road">
-  <h2>78. Roadmap</h2>
+  <h2>79. Roadmap</h2>
   <ol class="road">
     <li>Step 1 — Matrix, canvas, Cairo surface: test shapes in PNG, SVG and PDF. ✓</li>
     <li>Step 2 — GDAL/OGR reading: drawing a real layer with a fixed style. ✓</li>
@@ -3620,7 +3679,7 @@ bash:  find /c/temp/wmscache -type f | wc -l</pre>
     <li>Step 4a ✓ — Rasters (§65, §66): reading the view's window with its overviews, bands into ARGB32, transparent nodata, the <code>raster</code> symbolizer and its opacity. Same coordinate system as the map. Client: editor2d's raster layers.</li>
     <li>Step 5 — Printing (§74): a page at an exact scale, in PDF: the sheet, the frame, the title, the scale bar on the ground, the north arrow by PROJ, the attributions, a simple legend; <code>--page</code> and <code>print:</code>. Chosen on 2 November before the labels, for carto2D 1.0. 5a (0.5.0, 3 November) ✓ the page; 5b (0.5.1) ✓ the legend; 5c (0.5.2, editor2d 0.6.6) ✓ editor2d's Print. Step closed on 3 November.</li>
     <li>Step 3d-2 — SVG symbols (§75, 0.5.3, 3 November) ✓: nanosvg, one header, no DLL; the SVG read once and drawn as paths by our canvas, vector in a PDF, the same in the legend.</li>
-    <li>Step 3d-3 — Symbol libraries (§76, 0.5.4, 3 November) ✓: a url without a folder looked for after the style's folder in <code>--symbols</code>, <code>R2D_SYMBOLS</code>, <code>symbols/</code> beside render2d; written back as a name. 0.5.5 (5 November) ✓: the library in render2d's tree, <code>symbols/user/</code> for the user's own, shared with carto2D. 0.5.6 ✓: 84 symbols in 8 families from Maki and Temaki (CC0), <code>tools/make-symbols.py</code>. 0.5.7 (6 November) ✓: the symbols and <code>styles/icons/</code> committed at last: render2d's own <code>.gitignore</code> (in <code>render2d/render2d/</code>) ignores <code>*.svg</code> and <code>*.png</code> (the maps one renders), and had kept them out of 0.5.6; two exceptions beside <code>!docs/**</code> now, <code>!symbols/**</code> and <code>!styles/**</code> (in that file: a deeper <code>.gitignore</code> wins over the repository's). Found by carto2D's first CI run: <code>test_render</code> counted the symbols of the public clone, 0 instead of 84. 0.5.8 (8 November) ✓: the web cache asked to Windows when <code>LOCALAPPDATA</code> is missing, not <code>C:\Windows</code> (§73). 0.5.9 ✓: <code>legendLines</code>, one style's legend lines without a Map, for carto2D's Layers panel (§74). 0.5.10 ✓: its own CI, the zip built and checked on Windows at every push, a draft release at every tag (§68).</li>
+    <li>Step 3d-3 — Symbol libraries (§76, 0.5.4, 3 November) ✓: a url without a folder looked for after the style's folder in <code>--symbols</code>, <code>R2D_SYMBOLS</code>, <code>symbols/</code> beside render2d; written back as a name. 0.5.5 (5 November) ✓: the library in render2d's tree, <code>symbols/user/</code> for the user's own, shared with carto2D. 0.5.6 ✓: 84 symbols in 8 families from Maki and Temaki (CC0), <code>tools/make-symbols.py</code>. 0.5.7 (6 November) ✓: the symbols and <code>styles/icons/</code> committed at last: render2d's own <code>.gitignore</code> (in <code>render2d/render2d/</code>) ignores <code>*.svg</code> and <code>*.png</code> (the maps one renders), and had kept them out of 0.5.6; two exceptions beside <code>!docs/**</code> now, <code>!symbols/**</code> and <code>!styles/**</code> (in that file: a deeper <code>.gitignore</code> wins over the repository's). Found by carto2D's first CI run: <code>test_render</code> counted the symbols of the public clone, 0 instead of 84. 0.5.8 (8 November) ✓: the web cache asked to Windows when <code>LOCALAPPDATA</code> is missing, not <code>C:\Windows</code> (§73). 0.5.9 ✓: <code>legendLines</code>, one style's legend lines without a Map, for carto2D's Layers panel (§74). 0.5.10 ✓: its own CI, the zip built and checked on Windows at every push, a draft release at every tag (§68). 0.5.11 ✓: natural breaks (Jenks), Fisher's exact method, a regular sample beyond 3,000 values (§77).</li>
     <li>Later — Recolouring an SVG symbol (noted 5 November): QGIS's "parametrised SVG" (<code>fill="param(fill) #2B6C8F"</code> in the file, a colour in the style, <code>param(fill)</code> replaced before nanosvg reads the text, one parsed image per colour); the library's discs made parametrised. Not SLD: an extension, as QGIS's.</li>
     <li>Step 4c — Web basemaps (§73): OpenStreetMap's tiles, the Region's WMTS and WMS, through GDAL's drivers. 4c-1 (0.4.9) ✓ the User-Agent, the cache, the clip to the map's area of use, the extent, the report, <code>basemaps/</code>. 4c-2 (0.4.10) ✓ the attributions, <code>--no-attribution</code> for tiles, no OSM pyramid. Phase closed on 2 November.</li>
     <li>Step 4b — On-the-fly reprojection (PROJ), §69 to §71: 4b-1 (0.4.5) ✓ vectors, <code>--crs</code>, <code>crs:</code> of the map and of a layer, the conversion per layer, the catalogue for editor2d; tested on OpenStreetMap against UrbIS. 4b-2 (0.4.8) ✓ rasters warped on the fly (§72). OpenStreetMap's tiles: step 4c, with the other web basemaps.</li>

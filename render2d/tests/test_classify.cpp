@@ -72,6 +72,36 @@ int main() {
     b = classBreaks({5, 5, 5, 5, 9, 9, 9, 9}, 4, BreakMethod::Quantiles);
     CHECK(b.size() == 1 && b[0] == 9);
     CHECK(classBreaks({7, 7, 7}, 3, BreakMethod::EqualIntervals).empty());   // one class
+    // §77: natural breaks (Jenks). Eight values in three heaps: the cuts fall
+    // in the gaps, at 10 and 30 (equal intervals would cut at 11 and 21).
+    b = classBreaks({1, 2, 3, 10, 11, 12, 30, 31}, 3, BreakMethod::NaturalBreaks);
+    CHECK(b.size() == 2);
+    if (b.size() == 2) { CHECK(b[0] == 10); CHECK(b[1] == 30); }
+    // The ten areas, 3 classes: 30..150 | 220..450 | 900 (squared deviations
+    // 37,187.5, against 62,171.9 for equal intervals and 279,591.7 for quantiles).
+    b = classBreaks(kAreas, 3, BreakMethod::NaturalBreaks);
+    CHECK(b.size() == 2);
+    if (b.size() == 2) { CHECK(b[0] == 220); CHECK(b[1] == 900); }
+    // 5 classes: 30..80 | 110, 150 | 220, 300 | 450 | 900.
+    b = classBreaks(kAreas, 5, BreakMethod::NaturalBreaks);
+    CHECK(b.size() == 4);
+    if (b.size() == 4) { CHECK(b[0] == 110); CHECK(b[1] == 220); CHECK(b[2] == 450); CHECK(b[3] == 900); }
+    // Two distinct values, 4 classes asked: 2 classes, never a cut inside equal values.
+    b = classBreaks({5, 5, 5, 5, 9, 9, 9, 9}, 4, BreakMethod::NaturalBreaks);
+    CHECK(b.size() == 1 && b[0] == 9);
+    CHECK(classBreaks({7, 7, 7}, 3, BreakMethod::NaturalBreaks).empty());
+    // 100,000 values in two heaps (1..50,000 and 1,000,001..1,050,000): the
+    // breaks come from 3,000 values at even ranks; the cut, put back on the
+    // true values, is the first value of the second heap.
+    {
+        std::vector<double> many;
+        for (int i = 1; i <= 50000; ++i) many.push_back(i);
+        for (int i = 1; i <= 50000; ++i) many.push_back(1000000 + i);
+        b = classBreaks(many, 2, BreakMethod::NaturalBreaks);
+        CHECK(b.size() == 1);
+        if (b.size() == 1) CHECK(b[0] == 1000001);
+    }
+
     // Bounds rounded to 6 significant digits: no 606.8399999999999 in a legend.
     b = classBreaks({70.4, 1412.5}, 5, BreakMethod::EqualIntervals);
     CHECK(b.size() == 4 && b[1] == 607.24);

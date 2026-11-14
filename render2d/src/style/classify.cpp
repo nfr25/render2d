@@ -5,6 +5,7 @@
 #include <charconv>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <map>
 
 namespace r2d {
@@ -85,9 +86,84 @@ FieldSummary summarizeField(FeatureSource& source, const std::string& field, int
     return out;
 }
 
+// §77: Fisher's exact method for Jenks's natural breaks. The classes are
+// runs of the sorted values; among every way of cutting them into n runs,
+// the one whose sum of squared deviations (each value from its class's mean)
+// is the smallest. Programmed dynamically: best[j][m] = the best cost of the
+// first m values in j classes = the least, over i, of best[j - 1][i] plus
+// the cost of the values i to m - 1 as one class. That cost comes in one
+// step from running sums: sum of squares - (sum)^2 / count. A cut is only
+// allowed where the value changes (equal values stay in one class).
+static std::vector<double> naturalBreaks(const std::vector<double>& sorted, int n) {
+    std::vector<double> v;
+    const std::size_t count = sorted.size();
+    if (count > kNaturalBreaksSample) {   // even ranks, the first and the last included
+        v.reserve(kNaturalBreaksSample);
+        for (std::size_t i = 0; i < kNaturalBreaksSample; ++i)
+            v.push_back(sorted[i * (count - 1) / (kNaturalBreaksSample - 1)]);
+    } else {
+        v = sorted;
+    }
+    const std::size_t m = v.size();
+    // Centred on the mean: the sums of squares stay small (areas of 10^6 m^2,
+    // squared and added 3,000 times, would lose their last digits).
+    double mean = 0.0;
+    for (double x : v) mean += x;
+    mean /= static_cast<double>(m);
+    std::vector<double> s(m + 1, 0.0), q(m + 1, 0.0);
+    for (std::size_t i = 0; i < m; ++i) {
+        const double x = v[i] - mean;
+        s[i + 1] = s[i] + x;
+        q[i + 1] = q[i] + x * x;
+    }
+    auto cost = [&](std::size_t a, std::size_t b) {   // the values a to b - 1, one class
+        const double sum = s[b] - s[a];
+        return std::max(0.0, q[b] - q[a] - sum * sum / static_cast<double>(b - a));
+    };
+    std::size_t distinct = 1;
+    for (std::size_t i = 1; i < m; ++i)
+        if (v[i] != v[i - 1]) ++distinct;
+    const std::size_t k = std::min<std::size_t>(static_cast<std::size_t>(n), distinct);
+    if (k < 2) return {};
+    const double inf = std::numeric_limits<double>::infinity();
+    std::vector<std::vector<double>> best(k + 1, std::vector<double>(m + 1, inf));
+    std::vector<std::vector<std::size_t>> from(k + 1, std::vector<std::size_t>(m + 1, 0));
+    for (std::size_t e = 1; e <= m; ++e) best[1][e] = cost(0, e);
+    for (std::size_t j = 2; j <= k; ++j)
+        for (std::size_t e = j; e <= m; ++e)
+            for (std::size_t i = j - 1; i < e; ++i) {
+                if (v[i] == v[i - 1] || best[j - 1][i] == inf) continue;   // a cut inside equal values
+                const double c = best[j - 1][i] + cost(i, e);
+                if (c < best[j][e]) {
+                    best[j][e] = c;
+                    from[j][e] = i;
+                }
+            }
+    std::vector<double> bounds;
+    std::size_t e = m;
+    for (std::size_t j = k; j >= 2; --j) {   // back from the end: the cut before each class
+        const std::size_t i = from[j][e];
+        // Sampled: the values between the last sample below the cut and the
+        // first above it were not seen. The cut goes halfway between the two,
+        // on the first true value from there: two heaps 1..50,000 and
+        // 1,000,001..1,050,000 are cut at 1,000,001 exactly, not at the
+        // first sample of the second heap (1,000,017).
+        if (count > m) {
+            const double half = (v[i - 1] + v[i]) / 2.0;
+            bounds.push_back(*std::lower_bound(sorted.begin(), sorted.end(), half));
+        } else {
+            bounds.push_back(v[i]);
+        }
+        e = i;
+    }
+    std::reverse(bounds.begin(), bounds.end());
+    return bounds;
+}
+
 std::vector<double> classBreaks(const std::vector<double>& sorted, int n, BreakMethod method) {
     std::vector<double> bounds;
     if (sorted.empty() || n < 2) return bounds;
+    if (method == BreakMethod::NaturalBreaks) return naturalBreaks(sorted, n);
     const double lo = sorted.front(), hi = sorted.back();
     const std::size_t count = sorted.size();
     for (int k = 1; k < n; ++k) {

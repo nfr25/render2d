@@ -27,10 +27,18 @@ struct FieldSummary {
 
 FieldSummary summarizeField(FeatureSource& source, const std::string& field, int maxDistinct = 50);
 
-enum class BreakMethod { EqualIntervals, Quantiles };
+// §62; §77: NaturalBreaks, Jenks's natural breaks (Fisher's exact method).
+enum class BreakMethod { EqualIntervals, Quantiles, NaturalBreaks };
+
+// §77: natural breaks are computed on at most this many values: beyond, on
+// that many taken at even ranks of the sorted values (the first and the
+// last included). The same values give the same breaks, every time.
+inline constexpr std::size_t kNaturalBreaksSample = 3000;
 
 // The n - 1 inner bounds of n classes (§62). Equal bounds, and bounds at or
 // below the smallest value, are dropped: fewer classes, never an empty one.
+// A bound is the first value of the class above it (a class holds the
+// values >= its lower bound and < its upper one).
 std::vector<double> classBreaks(const std::vector<double>& sorted, int n, BreakMethod method);
 
 // Component by component, t from 0 (from) to 1 (to). §62, editor2d §49.

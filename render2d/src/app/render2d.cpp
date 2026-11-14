@@ -81,8 +81,8 @@ const char* kUsage =
     "                         changes. Prints the legend; no image unless -o is given\n"
     "  --graduate FIELD       the same, in classes of a number, from light to dark\n"
     "  --classes N            --graduate: 2 to 10 classes (default 5)\n"
-    "  --method equal|quantiles     --graduate: equal intervals (default) or as many features\n"
-    "                         per class\n"
+    "  --method equal|quantiles|natural   --graduate: equal intervals (default), as many\n"
+    "                         features per class, or Jenks's natural breaks (the gaps)\n"
     "  --colours RRGGBB RRGGBB      --graduate: the light and the dark end (default FFF5EB 8C2D04)\n"
     "  --write-style FILE.yaml      writes the style made by --categorize or --graduate\n"
     "  --symbols DIR          a symbol library: an image a style names without its folder\n"
@@ -296,8 +296,9 @@ bool parseArgs(int argc, char** argv, Options& o) {
             const std::string m = argv[++i];
             if (m == "equal") o.classify->method = BreakMethod::EqualIntervals;
             else if (m == "quantiles") o.classify->method = BreakMethod::Quantiles;
+            else if (m == "natural" || m == "jenks") o.classify->method = BreakMethod::NaturalBreaks;   // §77
             else {
-                std::fprintf(stderr, "--method: expected equal or quantiles, got '%s'\n", m.c_str());
+                std::fprintf(stderr, "--method: expected equal, quantiles or natural, got '%s'\n", m.c_str());
                 return false;
             }
         } else if (a == "--colours" || a == "--colors") {
